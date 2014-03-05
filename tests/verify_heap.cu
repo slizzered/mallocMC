@@ -56,20 +56,22 @@ THE SOFTWARE.
 
 #include <iostream>
 #include <stdio.h>
-#include <vector>
+#include <typeinfo>
 
-#define CUDA_CHECK(cmd) {cudaError_t error = cmd; if(error!=cudaSuccess){printf("<%s>:%i ",__FILE__,__LINE__); printf("[CUDA] Error: %s\n", cudaGetErrorString(error));}}
+#define CUDA_CHECK(cmd) {cudaError_t error = cmd; \
+  if(error!=cudaSuccess){\
+    printf("<%s>:%i ",__FILE__,__LINE__);\
+    printf("[CUDA] Error: %s\n", cudaGetErrorString(error));}}
 /*start kernel, wait for finish and check errors*/
 #define CUDA_CHECK_KERNEL_SYNC(...) __VA_ARGS__;CUDA_CHECK(cudaDeviceSynchronize())
 
 typedef GPUTools::uint32 uint;
-typedef size_t allocatedElement;
+typedef int8_t allocatedElement;
 
 bool run_heap_verification(int cuda_device);
 
 
-int main(int argc, char** argv)
-{
+int main(int argc, char** argv){
   bool correct = false;
   try
   {
@@ -108,7 +110,7 @@ int main(int argc, char** argv)
   }
 
   if(correct){
-    std::cout << "\033[0;32mverification successful\033[0m" << std::endl;
+    std::cout << "\033[0;32mverification successful ✔\033[0m" << std::endl;
     return 0;
   }else{
     std::cerr << "\033[0;31mverification failed\033[0m" << std::endl;
@@ -116,187 +118,268 @@ int main(int argc, char** argv)
   }
 }
 
-
-__global__ void checkIfRunning(){
-  printf("still running!\n");
-}
-
-
-
-
-
 /**
  * @brief checks on a per thread basis, if the gaussian sum is correct
  *
  */
-__global__ void check_idfilling(allocatedElement** array,size_t *counter,allocatedElement* globalSum, size_t max){
-  allocatedElement sum=0;
+__global__ void check_idfilling(
+    allocatedElement** array,
+    unsigned long long *counter,
+    unsigned long long* globalSum, 
+    const size_t max,
+    int* correct
+    ){
+
+  unsigned long long sum=0;
   while(true){
-    allocatedElement pos = atomicAdd((unsigned long long*)counter,1);
-    if(pos >= max){
-      break;
+    size_t pos = atomicAdd(counter,1);
+    if(pos >= max){break;}
+    const size_t offset = pos*ALLOCATION_SIZE;
+    for(size_t i=0;i<ALLOCATION_SIZE;++i){
+      if (static_cast<allocatedElement>(array[pos][i]) != static_cast<allocatedElement>(offset+i)){
+        //printf("\nError in Kernel: array[%llu][%llu] is %#010x (should be %#010x)\n",
+        //    pos,i,static_cast<allocatedElement>(array[pos][i]),allocatedElement(offset+i));
+        atomicAnd(correct,0);
+      }
+      sum += static_cast<unsigned long long>(array[pos][i]);
     }
-    if(*(array[pos]) != (allocatedElement) pos){
-      printf("\nError in Kernel: array[%llu] is %llu (should be %llu)\n",pos,*(array[pos]),pos);
-    }
-    sum += *(array[pos]);
   }
 
-  atomicAdd((unsigned long long*)globalSum,(unsigned long long)sum);
+  atomicAdd(globalSum,sum);
 
+}
+
+__global__ void check_idfilling_fast(
+    allocatedElement** array,
+    unsigned long long *counter,
+    const size_t max,
+    int* correct
+    ){
+
+  int c = 1;
+  while(true){
+    size_t pos = atomicAdd(counter,1);
+    if(pos >= max){break;}
+    const size_t offset = pos*ALLOCATION_SIZE;
+    for(size_t i=0;i<ALLOCATION_SIZE;++i){
+      if (static_cast<allocatedElement>(array[pos][i]) != static_cast<allocatedElement>(offset+i)){
+        c=0;
+      }
+    }
+  }
+  atomicAnd(correct,c);
 }
 
 /**
  * @brief allocate a lot of small arrays
  *
- *
  */
-__global__ void allocAll(allocatedElement** array, size_t* counter, allocatedElement* globalSum){
-  allocatedElement sum=0;
+__global__ void allocAll(
+    allocatedElement** array, 
+    unsigned long long* counter, 
+    unsigned long long* globalSum
+    ){
 
+  unsigned long long sum=0;
   while(true){
     allocatedElement* p = new allocatedElement[ALLOCATION_SIZE];
     if(p == NULL) break;
 
-    allocatedElement pos = atomicAdd((unsigned long long*)counter,1);
+    size_t pos = atomicAdd(counter,1);
+    const size_t offset = pos*ALLOCATION_SIZE;
+    for(size_t i=0;i<ALLOCATION_SIZE;++i){
+      p[i] = static_cast<allocatedElement>(offset + i);
+      sum += static_cast<unsigned long long>(p[i]);
+    }
     array[pos] = p;
-    *(array[pos]) = (allocatedElement) pos;
-    sum += pos;
   }
 
-  //TODO: check for maximum value
-  atomicAdd((unsigned long long*)globalSum,(unsigned long long)sum);
+  atomicAdd(globalSum,sum);
 }
+
 
 /**
  * @brief free all the values again
  *
+ * @param array the datastructure to free
+ * @param counter should be an empty space on device memory, 
+ *        counts how many elements were freed
+ * @param max the maximum number of elements to free
  */
-__global__ void deAllocAll(allocatedElement** array,size_t* counter, size_t max){
+__global__ void deAllocAll(
+    allocatedElement** array,
+    unsigned long long* counter,
+    const size_t max
+    ){
+
   while(true){
-    allocatedElement pos = atomicAdd((unsigned long long*)counter,1);
+    size_t pos = atomicAdd(counter,1);
     if(pos >= max) break;
     delete array[pos];
   }
 }
 
+
+/**
+ * @brief damages one element in the array, so you 
+ *        can see if your checks actually work
+ *
+ * @param array the datastructure to damage
+ */
 __global__ void damageElement(allocatedElement** array){
-  *(array[5]) = 4;
+  array[1][0] = static_cast<allocatedElement>(5*ALLOCATION_SIZE - 1);
 }
 
 
-void allocate(allocatedElement** d_testData,allocatedElement* h_numberOfElements, allocatedElement* h_sum,const unsigned blocks,const unsigned threads){
-  allocatedElement zero = 0;
-  allocatedElement *d_sum, *d_numberOfElements;
+/**
+ * @brief wrapper function to allocate some memory on the device
+ *        with scatterAlloc. Returns the number of created elements as well
+ *        as the sum of these elements
+ *
+ * @param d_testData the datastructure which will hold 
+ *        pointers to the created elements
+ * @param h_numberOfElements will be filled with the number of elements
+ *        that were allocated
+ * @param h_sum will be filled with the sum of all elements created
+ * @param blocks the size of the CUDA grid
+ * @param threads the number of CUDA threads per block
+ */
+void allocate(
+    allocatedElement** d_testData, 
+    unsigned long long* h_numberOfElements, 
+    unsigned long long* h_sum,
+    const unsigned blocks,
+    const unsigned threads
+    ){
 
-  std::cout << "allocating the whole heap...";
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_sum,sizeof(allocatedElement)));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_numberOfElements, sizeof(allocatedElement)));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_sum,&zero,sizeof(allocatedElement),cudaMemcpyHostToDevice));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_numberOfElements,&zero,sizeof(allocatedElement),cudaMemcpyHostToDevice));
+  unsigned long long zero = 0;
+  unsigned long long *d_sum;
+  unsigned long long *d_numberOfElements;
+
+  std::cout << "allocating on device...";
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_sum,sizeof(unsigned long long)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_numberOfElements, sizeof(unsigned long long)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_sum,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_numberOfElements,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
 
   CUDA_CHECK_KERNEL_SYNC(allocAll<<<blocks,threads>>>(d_testData,d_numberOfElements,d_sum));
 
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(h_sum,d_sum,sizeof(allocatedElement),cudaMemcpyDeviceToHost));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(h_numberOfElements,d_numberOfElements,sizeof(allocatedElement),cudaMemcpyDeviceToHost));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(h_sum,d_sum,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(h_numberOfElements,d_numberOfElements,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
   cudaFree(d_sum);
   cudaFree(d_numberOfElements);
-  std::cout << "\r";
+  std::cout << "done" << std::endl;
 }
 
-bool verify(allocatedElement **d_testData,const size_t numberOfElements){
 
+/**
+ * @brief wrapper function to verify some allocated memory on the device
+ *
+ * @param d_testData the datastructure which holds 
+ *        pointers to the elements you want to verify
+ * @param h_numberOfElements the size of d_testData
+ * @return true if the verification was successful, false otherwise
+ */
+bool verify(allocatedElement **d_testData,const unsigned long long numberOfElements){
+
+  int h_correct = 1;
   const unsigned blocks = 64;
   const unsigned threads = 64;
-  const allocatedElement zero = 0;
-  bool correct = true;
-  allocatedElement *d_sum, *d_counter;
-  allocatedElement h_sum, h_counter;
+  const unsigned long long   zero = 0;
+  unsigned long long *d_sum, *d_counter;
+  int* d_correct;
+  
+  std::cout << "verifying on device... ";
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_sum, sizeof(unsigned long long)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_counter, sizeof(unsigned long long)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_correct, sizeof(int)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_sum,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_counter,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_correct,&h_correct,sizeof(int),cudaMemcpyHostToDevice));
+  CUDA_CHECK_KERNEL_SYNC(check_idfilling_fast<<<blocks,threads>>>(
+        d_testData,
+        d_counter,
+        //d_sum,
+        static_cast<size_t>(numberOfElements),
+        d_correct
+        ));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_correct,d_correct,sizeof(int),cudaMemcpyDeviceToHost));
 
+  //std::cout << "verifying on host...";
+  //unsigned long long h_sum, h_counter;
+  //unsigned long long gaussian_sum = (ALLOCATION_SIZE*numberOfElements * (ALLOCATION_SIZE*numberOfElements-1))/2;
+  //SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_sum,d_sum,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
+  //SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_counter,d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
+  //if(gaussian_sum != h_sum){
+  //  std::cerr << "\nGaussian Sum doesn't match: is " << h_sum;
+  //  std::cerr << " (should be " << gaussian_sum << ")" << std::endl;
+  //  h_correct=false;
+  //}
+  //if(numberOfElements != h_counter-(blocks*threads)){
+  //  std::cerr << "\nallocated number of elements doesn't match: is " << h_counter;
+  //  std::cerr << " (should be " << numberOfElements << ")" << std::endl;
+  //  h_correct=false;
+  //}
 
-
-  std::cout << "verifying on device...";
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_sum, sizeof(allocatedElement)));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_counter, sizeof(allocatedElement)));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_sum,&zero,sizeof(allocatedElement)*1,cudaMemcpyHostToDevice));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_counter,&zero,sizeof(allocatedElement)*1,cudaMemcpyHostToDevice));
-  CUDA_CHECK_KERNEL_SYNC(check_idfilling<<<blocks,threads>>>(d_testData,d_counter,d_sum,numberOfElements));
-  std::cout << "done" << std::endl;
-
-
-  std::cout << "verifying on host...";
-  allocatedElement gaussian_sum = (numberOfElements * (numberOfElements-1))/2;
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_sum,d_sum,sizeof(allocatedElement),cudaMemcpyDeviceToHost));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_counter,d_counter,sizeof(allocatedElement),cudaMemcpyDeviceToHost));
-  if(gaussian_sum != h_sum){
-    std::cerr << "\nGaussian Sum doesn't match: is " << h_sum << " (should be " << gaussian_sum << ")" << std::endl;
-    correct=false;;
-  }
-  if(numberOfElements != h_counter-(blocks*threads)){
-    std::cerr << "\nallocated number of elements doesn't match: is " << h_counter << " (should be " << numberOfElements << ")" << std::endl;
-    correct=false;;
-  }
+  cudaFree(d_correct);
   cudaFree(d_sum);
   cudaFree(d_counter);
-  if(correct){
-    std::cout << "successful                  " << std::endl;
+  if(h_correct){
+    std::cout << "done                        " << std::endl;
   }else{
     std::cerr << "failed                      " << std::endl;
   }
-  return correct;
+  return static_cast<bool>(h_correct);
 }
 
 
 /**
  * @brief verify that the heap actually holds the correct values without corrupting them
- *
+ * @param cuda_device the index of the graphics card to use
+ * @return true if the verification was successful, false otherwise
  */
-bool run_heap_verification(int cuda_device)
-{
+bool run_heap_verification(int cuda_device){
   cudaSetDevice(cuda_device);
   cudaSetDeviceFlags(cudaDeviceMapHost);
 
-  const unsigned blocks         = 64; 
-  const unsigned threads        = 128;
+  const unsigned blocks     = 64; 
+  const unsigned threads    = 128;
 
-  const allocatedElement zero   = 0;
-  const size_t heapSize         = size_t(2U)*size_t(1024U*1024U*1024U);
-  const size_t elemSize         = sizeof(allocatedElement)*ALLOCATION_SIZE;
-  const size_t nPointers        = ceil(float(heapSize) / elemSize); //maybe the same as maxElements? 
-  const size_t maxElements      = heapSize/elemSize;
-  bool correct                  = true;
+  const size_t heapSize     = size_t(4U)*size_t(1024U*1024U*1024U); //4GB
+  const size_t elemSize     = sizeof(allocatedElement)*ALLOCATION_SIZE;
+  const size_t nPointers    = ceil(static_cast<float>(heapSize) / elemSize);
+  const size_t maxElements  = heapSize/elemSize;
+  const size_t maxSpace     = maxElements*elemSize + nPointers*sizeof(allocatedElement*);
+  bool correct              = true;
+  const unsigned long long zero         = 0;
 
 
-  std::cout << "ScatterAlloc:          " << "page     sblock region waste coalesc reset" << std::endl;
-  printf(      "                       %d  %d      %d     %d     %d       %d\n",SCATTERALLOC_HEAPARGS);
-
+  std::cout << "ScatterAlloc:       " << "page     sblock region waste coalesc reset" << std::endl;
+  printf(      "                    %d  %d      %d     %d     %d       %d\n",SCATTERALLOC_HEAPARGS);
   std::cout << "Gridsize:              " << blocks << std::endl;
   std::cout << "Blocksize:             " << threads << std::endl;
-  std::cout << "Allocated elements:    " << elemSize << " Byte" << std::endl;
+  std::cout << "Allocated elements:    " << ALLOCATION_SIZE << " x " << sizeof(allocatedElement);
+  std::cout << "   Byte (" << elemSize << " Byte)" << std::endl;
   std::cout << "Heap:                  " << heapSize << " Byte";
   std::cout << " (" << heapSize/pow(1024,2) << " MByte)" << std::endl; 
-
-  const allocatedElement maxSpace = maxElements*elemSize + nPointers*sizeof(allocatedElement*);
   std::cout << "max space w/ pointers: " << maxSpace << " Byte";
   std::cout << " (" << maxSpace/pow(1024,2) << " MByte)" << std::endl;
-
   std::cout << "maximum of elements:   " << maxElements << std::endl;
 
   // initializing the heap
   initHeap(heapSize); 
   allocatedElement** d_testData;
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_testData, (heapSize/sizeof(allocatedElement))*sizeof(allocatedElement*)));
-
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_testData, nPointers*sizeof(allocatedElement*)));
 
   // allocating with scatterAlloc
-  size_t numberOfAllocatedElements = 0;
-  allocatedElement sumOfAllocatedElements = 0;
+  unsigned long long numberOfAllocatedElements = 0;
+  unsigned long long sumOfAllocatedElements = 0;
   allocate(d_testData,&numberOfAllocatedElements,&sumOfAllocatedElements,blocks,threads);
   std::cout << "allocated elements:    " << numberOfAllocatedElements;
   const float allocElementsPercentage = float(100*numberOfAllocatedElements)/maxElements;
   std::cout << " (" << allocElementsPercentage << "%)" << std::endl;
 
-  const size_t wastedHeap = heapSize - numberOfAllocatedElements * elemSize ;
+  const size_t wastedHeap = heapSize - static_cast<size_t>(numberOfAllocatedElements) * elemSize;
   std::cout << "wasted heap space:     " << wastedHeap << " Byte";
   std::cout << " (" << wastedHeap/pow(1024,2) << " MByte)" << std::endl;
 
@@ -304,7 +387,7 @@ bool run_heap_verification(int cuda_device)
   correct = correct && verify(d_testData,numberOfAllocatedElements);
 
   // damaging one cell
-  std::cout << "damaging of element...";
+  std::cout << "damaging of element... ";
   CUDA_CHECK_KERNEL_SYNC(damageElement<<<1,1>>>(d_testData));
   std::cout << "done" << std::endl;
 
@@ -313,15 +396,14 @@ bool run_heap_verification(int cuda_device)
   correct = correct && !verify(d_testData,numberOfAllocatedElements);
 
   // release all memory
-  std::cout << "deallocation...";
-  size_t* d_dealloc_counter;
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_dealloc_counter, sizeof(size_t)));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_dealloc_counter,&zero,sizeof(size_t),cudaMemcpyHostToDevice));
-  CUDA_CHECK_KERNEL_SYNC(deAllocAll<<<blocks,threads>>>(d_testData,d_dealloc_counter,numberOfAllocatedElements));
+  std::cout << "deallocation...        ";
+  unsigned long long* d_dealloc_counter;
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_dealloc_counter, sizeof(unsigned long long)));
+  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_dealloc_counter,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
+  CUDA_CHECK_KERNEL_SYNC(deAllocAll<<<blocks,threads>>>(d_testData,d_dealloc_counter,static_cast<size_t>(numberOfAllocatedElements)));
   cudaFree(d_dealloc_counter);
   cudaFree(d_testData);
   std::cout << "done "<< std::endl;
 
   return correct;
-
 }
