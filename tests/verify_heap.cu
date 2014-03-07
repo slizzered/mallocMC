@@ -41,6 +41,9 @@ THE SOFTWARE.
 // use_coalescing ... combine memory requests of within each warp
 // resetfreedpages ... allow pages to be reused with a different size
 #define SCATTERALLOC_HEAPARGS 4096*1024, 8, 16, 2, true, true
+
+// each pointer in the datastructure will point to this many
+// elements of type allocElem_t
 #define ELEMS_PER_SLOT 750
 
 //include the scatter alloc heap
@@ -59,26 +62,41 @@ THE SOFTWARE.
 #include <typeinfo>
 #include <vector>
 
+// get a CUDA error and print it nicely
 #define CUDA_CHECK(cmd) {cudaError_t error = cmd; \
   if(error!=cudaSuccess){\
     printf("<%s>:%i ",__FILE__,__LINE__);\
     printf("[CUDA] Error: %s\n", cudaGetErrorString(error));}}
-/*start kernel, wait for finish and check errors*/
+
+// start kernel, wait for finish and check errors
 #define CUDA_CHECK_KERNEL_SYNC(...) __VA_ARGS__;CUDA_CHECK(cudaDeviceSynchronize())
 
+// global variable for verbosity, might change due to user input '--verbose'
+bool verbose = false;
+
+// the type of the elements to allocate
+typedef unsigned long long allocElem_t;
+
+bool run_heap_verification(const int, const size_t, const unsigned, const unsigned);
+void parse_cmdline(const int, char**, size_t*, unsigned*, unsigned*);
+void print_help(char**);
+
+
+// used to create an empty stream for non-verbose output 
 struct nullstream : std::ostream {
   nullstream() : std::ostream(0) { }
 };
- 
-typedef GPUTools::uint32 uint;
-typedef int8_t allocElem_t;
 
-bool run_heap_verification(const int cuda_device, const int verbosity);
-void parse_cmdline(const int argc, char**argv,int* verbosity);
+// uses global verbosity to switch between std::cout and a NULL-output
+std::ostream& dout() {
+  static nullstream n;
+  return verbose ? std::cout : n;
+}
 
 
-/*
- * @brief will do a basic verification of scatterAlloc.
+/**
+ * will do a basic verification of scatterAlloc.
+ *
  * @param argv if -q or --quiet is supplied as a
  *        command line argument, verbosity will be reduced
  * 
@@ -86,14 +104,20 @@ void parse_cmdline(const int argc, char**argv,int* verbosity);
  *         otherwise returns 1
  */
 int main(int argc, char** argv){
-  bool correct = false;
+  bool correct     = false;
+  size_t heapInMB  = size_t(1024U*1U); //1GB
+  unsigned threads = 128;
+  unsigned blocks  = 64;
+
   try
   {
+    parse_cmdline(argc, argv, &heapInMB, &threads, &blocks);
+
     int cuda_device = argc > 1 ? atoi(argv[1]) : 0;
 
     cudaDeviceProp deviceProp;
     cudaGetDeviceProperties(&deviceProp, cuda_device);
-    std::cout << "Using device: " << deviceProp.name << std::endl;
+    dout() << "Using device: " << deviceProp.name << std::endl;
 
     if( deviceProp.major < 2 ) {
       std::cerr << "This GPU with Compute Capability " << deviceProp.major 
@@ -102,9 +126,7 @@ int main(int argc, char** argv){
       return -2;
     }
 
-    int verbosity = 2;
-    parse_cmdline(argc,argv,&verbosity);
-    correct = run_heap_verification(cuda_device,verbosity);
+    correct = run_heap_verification(cuda_device, heapInMB, threads, blocks);
 
     cudaDeviceReset();
   }
@@ -136,17 +158,29 @@ int main(int argc, char** argv){
 
 
 /**
- * @brief will parse command line arguments
+ * will parse command line arguments
+ *
+ * for more details, see print_help()
  *
  * @param argc argc from main()
  * @param argv argv from main()
- * @param verbosity will be filled with the supplied verbosity
+ * @param heapInMP will be filled with the heapsize, if given as a parameter
+ * @param threads will be filled with number of threads, if given as a parameter
+ * @param blocks will be filled with number of blocks, if given as a parameter
  */
-void parse_cmdline(const int argc, char**argv,int* verbosity){
-  std::vector<std::pair<std::string, std::string> > parameters;
-  //Parse Commandline
-  for (int i = 1; i < argc; ++i) {
+void parse_cmdline(
+    const int argc,
+    char**argv,
+    size_t *heapInMB,
+    unsigned *threads,
+    unsigned *blocks
+    ){
 
+  std::vector<std::pair<std::string, std::string> > parameters;
+
+  // Parse Commandline, tokens are shaped like ARG=PARAM or ARG
+  // This requires to use '=', if you want to supply a value with a parameter
+  for (int i = 1; i < argc; ++i) {
     char* pos = strtok(argv[i], "=");
     std::pair < std::string, std::string > p(std::string(pos), std::string(""));
     pos = strtok(NULL, "=");
@@ -155,21 +189,74 @@ void parse_cmdline(const int argc, char**argv,int* verbosity){
     }
     parameters.push_back(p);
   }
+
+  // go through all parameters that were found
   for (unsigned i = 0; i < parameters.size(); ++i) {
     std::pair < std::string, std::string > p = parameters.at(i);
 
-    if (p.first == "-q" || p.first == "--quiet") {
-      *verbosity = 1;
+    if (p.first == "-v" || p.first == "--verbose") {
+      verbose = true;
     }
 
+    if (p.first == "--threads") {
+      *threads = atoi(p.second.c_str());
+    }
+
+    if (p.first == "--blocks") {
+      *blocks = atoi(p.second.c_str());
+    }
+
+    if(p.first == "--heapsize") {
+      *heapInMB = size_t(atoi(p.second.c_str()));
+    }
+
+    if(p.first == "-h" || p.first == "--help"){
+      print_help(argv);
+      exit(0);
+    }
   }
 }
 
+
 /**
- * @brief checks on a per thread basis, if the values
- *        written during allocation are still the same.
- *        Also calculates the sum over all allocated
- *        values for a more in-depth verification
+ * prints a helpful message about program use
+ *
+ * @param argv the argv-parameter from main, used to find the program name
+ */
+void print_help(char** argv){
+  std::stringstream s;
+
+  s << "SYNOPSIS:"                                              << std::endl;
+  s << argv[0] << " [OPTIONS]"                                  << std::endl;
+  s << ""                                                       << std::endl;
+  s << "OPTIONS:"                                               << std::endl;
+  s << "  -h, --help"                                           << std::endl; 
+  s << "    Print this help message and exit"                   << std::endl; 
+  s << ""                                                       << std::endl; 
+  s << "  -v, --verbose"                                        << std::endl;
+  s << "    Print information about parameters and progress"    << std::endl;
+  s << ""                                                       << std::endl; 
+  s << "  --threads=N"                                          << std::endl; 
+  s << "    Set the number of threads per block (default 128)"  << std::endl; 
+  s << ""                                                       << std::endl; 
+  s << "  --blocks=N"                                           << std::endl; 
+  s << "    Set the number of blocks in the grid (default 64)"  << std::endl; 
+  s << ""                                                       << std::endl; 
+  s << "  --heapsize=N"                                         << std::endl; 
+  s << "    Set the heapsize to N Megabyte (default 1024)"      << std::endl; 
+
+  std::cout << s.str();
+}
+
+
+/**
+ * checks validity of memory for each single cell
+ *
+ * checks on a per thread basis, if the values written during 
+ * allocation are still the same. Also calculates the sum over
+ * all allocated values for a more in-depth verification that
+ * could be done on the host
+ *
  * @param data the data to verify
  * @param counter should be initialized with 0 and will
  *        be used to count how many verifications were
@@ -207,8 +294,11 @@ __global__ void check_content(
 
 
 /**
- * @brief checks on a per thread basis, if the values
- *        written during allocation are still the same.
+ * checks validity of memory for each single cell
+ *
+ * checks on a per thread basis, if the values written during 
+ * allocation are still the same.
+ *
  * @param data the data to verify
  * @param counter should be initialized with 0 and will
  *        be used to count how many verifications were
@@ -240,10 +330,12 @@ __global__ void check_content_fast(
 
 
 /**
- * @brief allocate a lot of small arrays, each having
- *        the size ELEMS_PER_SLOT. Each element will
- *        be filled with a number that is related to
- *        its position in the datastructure.
+ * allocate a lot of small arrays and fill them
+ *
+ * Each array has the size ELEMS_PER_SLOT and the type allocElem_t. 
+ * Each element will be filled with a number that is related to its
+ * position in the datastructure.
+ *
  * @param data the datastructure to allocate
  * @param counter should be initialized with 0 and will
  *        hold, how many allocations were done
@@ -275,7 +367,7 @@ __global__ void allocAll(
 
 
 /**
- * @brief free all the values again
+ * free all the values again
  *
  * @param data the datastructure to free
  * @param counter should be an empty space on device memory, 
@@ -297,8 +389,11 @@ __global__ void deallocAll(
 
 
 /**
- * @brief damages one element in the data, so you 
- *        can see if your checks actually work
+ * damages one element in the data
+ *
+ * With help of this function, you can verify that
+ * the checks actually work as expected and can find
+ * an error, if one should exist
  *
  * @param data the datastructure to damage
  */
@@ -308,9 +403,10 @@ __global__ void damageElement(allocElem_t** data){
 
 
 /**
- * @brief wrapper function to allocate some memory on the device
- *        with scatterAlloc. Returns the number of created elements as well
- *        as the sum of these elements
+ * wrapper function to allocate memory on device
+ *
+ * allocates memory with scatterAlloc. Returns the number of 
+ * created elements as well as the sum of these elements
  *
  * @param d_testData the datastructure which will hold 
  *        pointers to the created elements
@@ -328,7 +424,7 @@ void allocate(
     const unsigned threads
     ){
 
-  std::cout << "allocating on device...";
+  dout() << "allocating on device...";
 
   unsigned long long zero = 0;
   unsigned long long *d_sum;
@@ -345,12 +441,15 @@ void allocate(
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(h_nSlots,d_nSlots,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
   cudaFree(d_sum);
   cudaFree(d_nSlots);
-  std::cout << "done" << std::endl;
+  dout() << "done" << std::endl;
 }
 
 
 /**
- * @brief wrapper function to verify some allocated memory on the device
+ * Wrapper function to verify allocation on device
+ *
+ * Generates the same number that was written into each position of
+ * the datastructure during allocation and compares the values.
  *
  * @param d_testData the datastructure which holds 
  *        pointers to the elements you want to verify
@@ -366,7 +465,7 @@ bool verify(
     const unsigned threads
     ){
 
-  std::cout << "verifying on device... ";
+  dout() << "verifying on device... ";
 
   const unsigned long long zero = 0;
   int  h_correct = 1;
@@ -396,27 +495,27 @@ bool verify(
   // This only works, if the type "allocElem_t"
   // can hold all the IDs (usually unsigned long long)
   /*
-  std::cout << "verifying on host...";
+  dout() << "verifying on host...";
   unsigned long long h_sum, h_counter;
   unsigned long long gaussian_sum = (ELEMS_PER_SLOT*nSlots * (ELEMS_PER_SLOT*nSlots-1))/2;
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_sum,d_sum,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(&h_counter,d_counter,sizeof(unsigned long long),cudaMemcpyDeviceToHost));
   if(gaussian_sum != h_sum){
-    std::cerr << "\nGaussian Sum doesn't match: is " << h_sum;
-    std::cerr << " (should be " << gaussian_sum << ")" << std::endl;
+    dout() << "\nGaussian Sum doesn't match: is " << h_sum;
+    dout() << " (should be " << gaussian_sum << ")" << std::endl;
     h_correct=false;
   }
   if(nSlots != h_counter-(blocks*threads)){
-    std::cerr << "\nallocated number of elements doesn't match: is " << h_counter;
-    std::cerr << " (should be " << nSlots << ")" << std::endl;
+    dout() << "\nallocated number of elements doesn't match: is " << h_counter;
+    dout() << " (should be " << nSlots << ")" << std::endl;
     h_correct=false;
   }
   */
 
   if(h_correct){
-    std::cout << "done" << std::endl;
+    dout() << "done" << std::endl;
   }else{
-    std::cerr << "failed" << std::endl;
+    dout() << "failed" << std::endl;
   }
 
   cudaFree(d_correct);
@@ -427,20 +526,30 @@ bool verify(
 
 
 /**
- * @brief verify that the heap actually holds the 
- *        correct values without corrupting them
+ * Verify the heap allocation of ScatterAlloc
+ *
+ * Allocates as much memory as the heap allows. Make sure that allocated
+ * memory actually holds the correct values without corrupting them. Will
+ * fill the datastructure with values that are relative to the index and
+ * later evalute, if the values inside stayed the same after allocating all
+ * memory
+ *
  * @param cuda_device the index of 
  *        the graphics card to use
  * @return true if the verification was successful,
  *         false otherwise
  */
-bool run_heap_verification(const int cuda_device, const int verbosity){
+bool run_heap_verification(
+    const int cuda_device,
+    const size_t heapMB,
+    const unsigned blocks,
+    const unsigned threads
+    ){
+
   cudaSetDevice(cuda_device);
   cudaSetDeviceFlags(cudaDeviceMapHost);
 
-  const unsigned blocks         = 64; 
-  const unsigned threads        = 128;
-  const size_t heapSize         = size_t(1024U*1024U*1024U) * size_t(4U); //4GB
+  const size_t heapSize         = size_t(1024U*1024U) * heapMB;
   const size_t slotSize         = sizeof(allocElem_t)*ELEMS_PER_SLOT;
   const size_t nPointers        = ceil(static_cast<float>(heapSize) / slotSize);
   const size_t maxSlots         = heapSize/slotSize;
@@ -449,17 +558,19 @@ bool run_heap_verification(const int cuda_device, const int verbosity){
   const unsigned long long zero = 0;
 
 
-  std::cout << "ScatterAlloc:       " << "page     sblock region waste coalesc reset" << std::endl;
-  printf(      "                    %d  %d      %d     %d     %d       %d\n",SCATTERALLOC_HEAPARGS);
-  std::cout << "Gridsize:              " << blocks << std::endl;
-  std::cout << "Blocksize:             " << threads << std::endl;
-  std::cout << "Allocated elements:    " << ELEMS_PER_SLOT << " x " << sizeof(allocElem_t);
-  std::cout << "   Byte (" << slotSize << " Byte)" << std::endl;
-  std::cout << "Heap:                  " << heapSize << " Byte";
-  std::cout << " (" << heapSize/pow(1024,2) << " MByte)" << std::endl; 
-  std::cout << "max space w/ pointers: " << maxSpace << " Byte";
-  std::cout << " (" << maxSpace/pow(1024,2) << " MByte)" << std::endl;
-  std::cout << "maximum of elements:   " << maxSlots << std::endl;
+  dout() << "ScatterAlloc:          " << "page     sblock region waste coalesc reset" << std::endl;
+  if(verbose){
+    printf("                       %d  %d      %d     %d     %d       %d\n",SCATTERALLOC_HEAPARGS);
+  }
+  dout() << "Gridsize:              "     << blocks                   << std::endl;
+  dout() << "Blocksize:             "     << threads                  << std::endl;
+  dout() << "Allocated elements:    "     << ELEMS_PER_SLOT << " x "  << sizeof(allocElem_t);
+  dout() << "    Byte ("  << slotSize     << " Byte)"                 << std::endl;
+  dout() << "Heap:                  "     << heapSize                 << " Byte";
+  dout() << " (" << heapSize/pow(1024,2)  << " MByte)"                << std::endl; 
+  dout() << "max space w/ pointers: "     << maxSpace                 << " Byte";
+  dout() << " (" << maxSpace/pow(1024,2)  << " MByte)"                << std::endl;
+  dout() << "maximum of elements:   "     << maxSlots                 << std::endl;
 
   // initializing the heap
   initHeap(heapSize); 
@@ -471,27 +582,27 @@ bool run_heap_verification(const int cuda_device, const int verbosity){
   unsigned long long sumAllocElems = 0;
   allocate(d_testData,&nAllocSlots,&sumAllocElems,blocks,threads);
 
-  std::cout << "allocated elements:    " << nAllocSlots;
   const float allocFrac = static_cast<float>(nAllocSlots)*100/maxSlots;
-  std::cout << " (" << allocFrac << "%)" << std::endl;
   const size_t wasted = heapSize - static_cast<size_t>(nAllocSlots) * slotSize;
-  std::cout << "wasted heap space:     " << wasted << " Byte";
-  std::cout << " (" << wasted/pow(1024,2) << " MByte)" << std::endl;
+  dout() << "allocated elements:    "   << nAllocSlots;
+  dout() << " (" << allocFrac << "%)"   << std::endl;
+  dout() << "wasted heap space:     "   << wasted << " Byte";
+  dout() << " (" << wasted/pow(1024,2)  << " MByte)" << std::endl;
 
   // verifying on device
   correct = correct && verify(d_testData,nAllocSlots,blocks,threads);
 
   // damaging one cell
-  std::cout << "damaging of element... ";
+  dout() << "damaging of element... ";
   CUDA_CHECK_KERNEL_SYNC(damageElement<<<1,1>>>(d_testData));
-  std::cout << "done" << std::endl;
+  dout() << "done" << std::endl;
 
   // verifying on device 
   // THIS SHOULD FAIL (damage was done before!). Therefore, we must inverse the logic
   correct = correct && !verify(d_testData,nAllocSlots,blocks,threads);
 
   // release all memory
-  std::cout << "deallocation...        ";
+  dout() << "deallocation...        ";
   unsigned long long* d_dealloc_counter;
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc((void**) &d_dealloc_counter, sizeof(unsigned long long)));
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaMemcpy(d_dealloc_counter,&zero,sizeof(unsigned long long),cudaMemcpyHostToDevice));
@@ -499,6 +610,6 @@ bool run_heap_verification(const int cuda_device, const int verbosity){
   cudaFree(d_dealloc_counter);
   cudaFree(d_testData);
 
-  std::cout << "done "<< std::endl;
+  dout() << "done "<< std::endl;
   return correct;
 }
