@@ -22,3 +22,5 @@ cuda_add_executable(ScatterAllocExample
                     examples/example.cu )
 cuda_add_executable(ScatterAllocVerifyHeap
                     tests/verify_heap.cu )
+cuda_add_executable(PolicyAllocExample
+                    examples/policy_example.cu )
