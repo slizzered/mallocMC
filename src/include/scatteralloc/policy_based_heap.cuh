@@ -28,6 +28,9 @@ namespace GPUTools{
         void* myalloc   = CreationPolicy::create(req_size);
         const bool oom  = CreationPolicy::isOOM(myalloc);
         if(oom) myalloc = OOMPolicy::handleOOM(myalloc);
+       // if(blockIdx.x==0 && threadIdx.x==0){
+       //     printf("warp %d trying to allocate %d bytes. myalloc: %p (oom %d)\n",GPUTools::warpid(),req_size,myalloc,oom);
+       // }
 
         //TODO: distribute executes similar code as gather. This is wasteful!
         void* myres     = AllocationPolicy::distribute(req_size,bytes,myalloc); //TODO: still needs pagesize
