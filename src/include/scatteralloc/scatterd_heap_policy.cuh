@@ -603,7 +603,7 @@ namespace GPUTools{
         }
 
         __device__ bool isOOM(void* p){
-          return  (bool) __popc(__ballot(p != NULL));
+          return  32 == __popc(__ballot(p == NULL));
         }
 
 

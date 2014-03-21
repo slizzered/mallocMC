@@ -8,7 +8,7 @@ typedef GPUTools::PolicyAllocator< GPUTools::ScatteredHeap<SCATTERALLOC_HEAPARGS
 __device__ scatterAllocator_T scatterAllocator;
 
 // global initHeap
-void* initHeap(size_t heapsize = 4U*1024U*1024U){
+void* initHeap(size_t heapsize = 8U*1024U*1024U){
   void* pool;
   scatterAllocator_T* heap;
   SCATTERALLOC_CUDA_CHECKED_CALL(cudaGetSymbolAddress((void**)&heap,scatterAllocator));

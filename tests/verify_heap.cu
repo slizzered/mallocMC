@@ -40,14 +40,15 @@ THE SOFTWARE.
 // wastefactor ... how much memory can be wasted per alloc (multiplicative factor)
 // use_coalescing ... combine memory requests of within each warp
 // resetfreedpages ... allow pages to be reused with a different size
-#define SCATTERALLOC_HEAPARGS 4096*1024, 8, 16, 2, true, true
+#define SCATTERALLOC_HEAPARGS 4096*1024, 8, 16, 2, true, false
 
 // each pointer in the datastructure will point to this many
 // elements of type allocElem_t
 #define ELEMS_PER_SLOT 750
 
 //include the scatter alloc heap
-#include <src/include/scatteralloc/heap_impl.cuh>
+#include <src/include/scatteralloc/policy_based_heap_impl.cuh>
+//#include <src/include/scatteralloc/heap_impl.cuh>
 #include <src/include/scatteralloc/utils.h>
 
 #ifdef WIN32
