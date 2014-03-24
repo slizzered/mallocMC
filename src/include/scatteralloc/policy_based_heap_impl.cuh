@@ -1,20 +1,38 @@
 #pragma once
 
 #include "policy_based_heap.cuh"
+#include "get_heap_simpleMalloc.cuh" /*GetHeapPolicy: GetHeapSimpleMalloc*/
+#include "xmalloc_like_distribution.cuh" /*AllocationPolicy: XMallocDistribution*/
+#include "null_on_oom_policy.cuh"    /*OOMPolicy: NullOnOOM*/
+#include "scatterd_heap_policy.cuh"  /*CreationPolicy: ScatteredHeap */
+
+
 
 // global object
-typedef GPUTools::PolicyAllocator< GPUTools::ScatteredHeap<SCATTERALLOC_HEAPARGS>, GPUTools::XMallocDistribution<SCATTERALLOC_HEAPARGS>, NullOnOOM, GPUTools::GetHeapSimpleMalloc > scatterAllocator_T;
+typedef GPUTools::PolicyAllocator< GPUTools::ScatteredHeap<SCATTERALLOC_HEAPARGS>, GPUTools::XMallocDistribution<SCATTERALLOC_HEAPARGS>, NullOnOOM, GPUTools::GetHeapSimpleMalloc > ScatterAllocator;
 
-__device__ scatterAllocator_T scatterAllocator;
+
+//typedef OtherAllocator PolClass;
+typedef  ScatterAllocator PolClass;
+
+
+__device__ PolClass polObject;
 
 // global initHeap
-void* initHeap(size_t heapsize = 8U*1024U*1024U){
-  void* pool;
-  scatterAllocator_T* heap;
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaGetSymbolAddress((void**)&heap,scatterAllocator));
-  SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc(&pool, heapsize));
-  GPUTools::initKernel<<<1,256>>>(heap,pool, heapsize);
-  return pool;
+__host__ void* initHeap(size_t heapsize = 8U*1024U*1024U){
+  return PolClass::initHeap(polObject,heapsize);
+};
+
+__host__ void* initHeap(PolClass p,size_t heapsize = 8U*1024U*1024U){
+  return PolClass::initHeap(p,heapsize);
+};
+
+__host__ void destroyHeap(){
+  PolClass::destroyHeap(polObject);
+};
+
+__host__ void destroyHeap(PolClass p){
+  PolClass::destroyHeap(p);
 };
 
 #ifdef __CUDACC__
@@ -22,11 +40,11 @@ void* initHeap(size_t heapsize = 8U*1024U*1024U){
 // global overwrite malloc/free
 __device__ void* malloc(size_t t) __THROW
 {
-  return scatterAllocator.alloc(t);
+  return polObject.alloc(t);
 };
 __device__ void  free(void* p) __THROW
 {
-  scatterAllocator.dealloc(p);
+  polObject.dealloc(p);
 };
 #endif
 #endif

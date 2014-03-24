@@ -546,7 +546,7 @@ namespace GPUTools{
          * @param memory pointer to the memory used for the heap
          * @param memsize size of the memory in bytes
          */
-        __device__ void init(void* memory, size_t memsize)
+        __device__ void initDeviceFunction(void* memory, size_t memsize)
         {
           uint32 linid = threadIdx.x + blockDim.x*(threadIdx.y + threadIdx.z*blockDim.y);
           uint32 threads = blockDim.x*blockDim.y*blockDim.z;
@@ -607,14 +607,23 @@ namespace GPUTools{
         }
 
 
+        template < typename T>
+          static void* initHeap(const T& obj, void*pool, size_t memsize){
+            T* heap;
+            SCATTERALLOC_CUDA_CHECKED_CALL(cudaGetSymbolAddress((void**)&heap,obj));
+            initKernel<<<1,256>>>(heap, pool, memsize);
+            return heap;
+          }   
+
+
+
 
 
     };
 
-  template<uint pagesize, uint accessblocks, uint regionsize, uint wastefactor,  bool use_coalescing, bool resetfreedpages>
-    __global__ void initKernel(ScatteredHeap<pagesize, accessblocks, regionsize, wastefactor, use_coalescing, resetfreedpages>* heap, void* heapmem, size_t memsize){
-      heap->init(heapmem, memsize);
-    }
+
+
+
 
 
 }
