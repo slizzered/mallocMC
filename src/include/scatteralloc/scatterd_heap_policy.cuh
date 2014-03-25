@@ -4,17 +4,26 @@
 
 namespace GPUTools{
 
-  template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+
+  //template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+  template<bool use_coalescing = true>
     class ScatteredHeap
     {
+        
+        typedef ScatteredHeap<use_coalescing> myType;
+        static const uint32 pagesize      = GetProperties<myType>::pagesize;
+        static const uint32 accessblocks  = GetProperties<myType>::accessblocks;
+        static const uint32 regionsize    = GetProperties<myType>::regionsize;
+        static const uint32 wastefactor   = GetProperties<myType>::wastefactor;
+        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages;
+
+        //This is something like a public interface. TODO: Remove?
       public:
-        typedef ScatteredHeap<pagesize,accessblocks,regionsize,wastefactor,use_coalescing,resetfreedpages> myType;
-        static const uint32 _pagesize = pagesize;
-        static const uint32 _accessblocks = accessblocks;
-        static const uint32 _regionsize = regionsize;
-        static const uint32 _wastefactor = wastefactor;
-        static const bool _use_coalescing = use_coalescing;
-        static const bool _resetfreedpages = resetfreedpages;
+        static const uint32 _pagesize       = pagesize;
+        static const uint32 _accessblocks   = accessblocks;
+        static const uint32 _regionsize     = regionsize;
+        static const uint32 _wastefactor    = wastefactor;
+        static const bool _resetfreedpages  = resetfreedpages;
 
       private:
 
@@ -546,7 +555,7 @@ namespace GPUTools{
          * @param memory pointer to the memory used for the heap
          * @param memsize size of the memory in bytes
          */
-        __device__ void init(void* memory, size_t memsize)
+        __device__ void initDeviceFunction(void* memory, size_t memsize)
         {
           uint32 linid = threadIdx.x + blockDim.x*(threadIdx.y + threadIdx.z*blockDim.y);
           uint32 threads = blockDim.x*blockDim.y*blockDim.z;
@@ -607,14 +616,19 @@ namespace GPUTools{
         }
 
 
+        template < typename T>
+          static void* initHeap(const T& obj, void*pool, size_t memsize){
+            T* heap;
+            SCATTERALLOC_CUDA_CHECKED_CALL(cudaGetSymbolAddress((void**)&heap,obj));
+            initKernel<<<1,256>>>(heap, pool, memsize);
+            return heap;
+          }   
+
+
+
 
 
     };
-
-  template<uint pagesize, uint accessblocks, uint regionsize, uint wastefactor,  bool use_coalescing, bool resetfreedpages>
-    __global__ void initKernel(ScatteredHeap<pagesize, accessblocks, regionsize, wastefactor, use_coalescing, resetfreedpages>* heap, void* heapmem, size_t memsize){
-      heap->init(heapmem, memsize);
-    }
 
 
 }

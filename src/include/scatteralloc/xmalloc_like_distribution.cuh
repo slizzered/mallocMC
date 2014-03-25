@@ -1,22 +1,29 @@
 #include "src/include/scatteralloc/utils.h"
 namespace GPUTools{
 
-  template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+  template<bool b = true>
     class XMallocDistribution
     {
+      bool can_use_coalescing;
+      uint32 warpid;
+      uint32 myoffset;
+      uint32 threadcount;
+      uint32 req_size;
+
+
       public:
         __device__ uint32 gather(uint32 bytes){
-          //shared structs to use
-          __shared__ uint32 warp_sizecounter[32];
-
-          bool can_use_coalescing = false; 
-          uint32 myoffset = 0;
-          uint32 warpid = GPUTools::warpid();
-
+          can_use_coalescing = false;
+          warpid = GPUTools::warpid();
+          myoffset = 0;
+          threadcount = 0;
+        
           //init with initial counter
+          __shared__ uint32 warp_sizecounter[32];
           warp_sizecounter[warpid] = 16;
 
-          bool coalescible = bytes > 0 && bytes < (pagesize / 32);
+          //bool coalescible = bytes > 0 && bytes < (pagesize / 32);
+          bool coalescible = bytes > 0 && bytes < (GetProperties<XMallocDistribution<b> >::pagesize / 32);
           uint32 threadcount = __popc(__ballot(coalescible));
 
           if (coalescible && threadcount > 1) 
@@ -25,36 +32,14 @@ namespace GPUTools{
             can_use_coalescing = true;
           }
 
-          uint32 req_size = bytes;
+          req_size = bytes;
           if (can_use_coalescing)
             req_size = (myoffset == 16) ? warp_sizecounter[warpid] : 0;
 
           return req_size;
         }
 
-        __device__ void* distribute(uint32 req_size, uint32 bytes,void* allocatedMem){
-          //shared structs to use
-          __shared__ uint32 warp_sizecounter[32];
-
-          bool can_use_coalescing = false; 
-          uint32 myoffset = 0;
-          uint32 warpid = GPUTools::warpid();
-
-          //init with initial counter
-          warp_sizecounter[warpid] = 16;
-
-          bool coalescible = bytes > 0 && bytes < (pagesize / 32);
-          uint32 threadcount = __popc(__ballot(coalescible));
-
-          if (coalescible && threadcount > 1) 
-          {
-            myoffset = atomicAdd(&warp_sizecounter[warpid], bytes);
-            can_use_coalescing = true;
-          }
-
-          // up to here, the code is basically identical with "gather"
-          // (however, many of the created variables are needed from now on
-
+        __device__ void* distribute(void* allocatedMem){
           __shared__ char* warp_res[32];
 
           char* myalloc = (char*) allocatedMem;
@@ -75,7 +60,6 @@ namespace GPUTools{
               myres = 0;
           }
           return myres;
-
 
         }
 
