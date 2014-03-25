@@ -4,17 +4,26 @@
 
 namespace GPUTools{
 
-  template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+
+  //template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+  template<bool use_coalescing = true>
     class ScatteredHeap
     {
+        
+        typedef ScatteredHeap<use_coalescing> myType;
+        static const uint32 pagesize      = GetProperties<myType>::pagesize;
+        static const uint32 accessblocks  = GetProperties<myType>::accessblocks;
+        static const uint32 regionsize    = GetProperties<myType>::regionsize;
+        static const uint32 wastefactor   = GetProperties<myType>::wastefactor;
+        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages;
+
+        //This is something like a public interface. TODO: Remove?
       public:
-        typedef ScatteredHeap<pagesize,accessblocks,regionsize,wastefactor,use_coalescing,resetfreedpages> myType;
-        static const uint32 _pagesize = pagesize;
-        static const uint32 _accessblocks = accessblocks;
-        static const uint32 _regionsize = regionsize;
-        static const uint32 _wastefactor = wastefactor;
-        static const bool _use_coalescing = use_coalescing;
-        static const bool _resetfreedpages = resetfreedpages;
+        static const uint32 _pagesize       = pagesize;
+        static const uint32 _accessblocks   = accessblocks;
+        static const uint32 _regionsize     = regionsize;
+        static const uint32 _wastefactor    = wastefactor;
+        static const bool _resetfreedpages  = resetfreedpages;
 
       private:
 

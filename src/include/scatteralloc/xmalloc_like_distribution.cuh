@@ -1,7 +1,7 @@
 #include "src/include/scatteralloc/utils.h"
 namespace GPUTools{
 
-  template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
+  template<bool b = true>
     class XMallocDistribution
     {
       bool can_use_coalescing;
@@ -22,7 +22,8 @@ namespace GPUTools{
           __shared__ uint32 warp_sizecounter[32];
           warp_sizecounter[warpid] = 16;
 
-          bool coalescible = bytes > 0 && bytes < (pagesize / 32);
+          //bool coalescible = bytes > 0 && bytes < (pagesize / 32);
+          bool coalescible = bytes > 0 && bytes < (GetProperties<XMallocDistribution<b> >::pagesize / 32);
           uint32 threadcount = __popc(__ballot(coalescible));
 
           if (coalescible && threadcount > 1) 

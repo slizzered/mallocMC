@@ -1,5 +1,8 @@
 #pragma once
 
+template <class T>
+struct GetProperties{};
+
 #include "policy_based_heap.cuh"
 #include "get_heap_simpleMalloc.cuh" /*GetHeapPolicy: GetHeapSimpleMalloc*/
 #include "xmalloc_like_distribution.cuh" /*AllocationPolicy: XMallocDistribution*/
@@ -9,7 +12,29 @@
 
 
 // global object
-typedef GPUTools::PolicyAllocator< GPUTools::ScatteredHeap<SCATTERALLOC_HEAPARGS>, GPUTools::XMallocDistribution<SCATTERALLOC_HEAPARGS>, NullOnOOM, GPUTools::GetHeapSimpleMalloc > ScatterAllocator;
+typedef GPUTools::PolicyAllocator< 
+  GPUTools::ScatteredHeap<>, 
+  GPUTools::XMallocDistribution<>, 
+  NullOnOOM, 
+  GPUTools::GetHeapSimpleMalloc 
+  > ScatterAllocator;
+
+
+//parameters for the Heap
+template<>
+struct GetProperties<GPUTools::ScatteredHeap<> >{
+  static const GPUTools::uint32 pagesize      = 4096;
+  static const GPUTools::uint32 accessblocks  = 8;
+  static const GPUTools::uint32 regionsize    = 16;
+  static const GPUTools::uint32 wastefactor   = 2;
+  static const bool resetfreedpages           = false;
+};
+
+//parameters for the AllocationPolicy
+template<>
+struct GetProperties<GPUTools::XMallocDistribution<> >{
+  static const GPUTools::uint32 pagesize = 4096;
+};
 
 
 //typedef OtherAllocator PolClass;
