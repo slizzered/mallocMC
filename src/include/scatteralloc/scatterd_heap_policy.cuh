@@ -1,21 +1,22 @@
 #include "src/include/scatteralloc/utils.h"
 #include <stdio.h>
+#include <assert.h>
+#include <boost/mpl/int.hpp>
+#include <boost/mpl/bool.hpp>
 
 
 namespace GPUTools{
 
-
-  //template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
-  template<bool use_coalescing = true>
+  template<bool unused = true>
     class ScatteredHeap
     {
-        
-        typedef ScatteredHeap<use_coalescing> myType;
-        static const uint32 pagesize      = GetProperties<myType>::pagesize;
-        static const uint32 accessblocks  = GetProperties<myType>::accessblocks;
-        static const uint32 regionsize    = GetProperties<myType>::regionsize;
-        static const uint32 wastefactor   = GetProperties<myType>::wastefactor;
-        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages;
+
+        typedef ScatteredHeap<unused> myType;
+        static const uint32 pagesize      = GetProperties<myType>::pagesize::value;
+        static const uint32 accessblocks  = GetProperties<myType>::accessblocks::value;
+        static const uint32 regionsize    = GetProperties<myType>::regionsize::value;
+        static const uint32 wastefactor   = GetProperties<myType>::wastefactor::value;
+        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages::value;
 
         //This is something like a public interface. TODO: Remove?
       public:

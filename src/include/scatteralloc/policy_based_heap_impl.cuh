@@ -1,6 +1,6 @@
 #pragma once
 
-template <class T>
+template<typename T>
 struct GetProperties{};
 
 #include "policy_based_heap.cuh"
@@ -8,10 +8,11 @@ struct GetProperties{};
 #include "xmalloc_like_distribution.cuh" /*AllocationPolicy: XMallocDistribution*/
 #include "null_on_oom_policy.cuh"    /*OOMPolicy: NullOnOOM*/
 #include "scatterd_heap_policy.cuh"  /*CreationPolicy: ScatteredHeap */
+#include <boost/mpl/int.hpp>
+#include <boost/mpl/bool.hpp>
 
 
-
-// global object
+// global type
 typedef GPUTools::PolicyAllocator< 
   GPUTools::ScatteredHeap<>, 
   GPUTools::XMallocDistribution<>, 
@@ -23,17 +24,29 @@ typedef GPUTools::PolicyAllocator<
 //parameters for the Heap
 template<>
 struct GetProperties<GPUTools::ScatteredHeap<> >{
-  static const GPUTools::uint32 pagesize      = 4096;
-  static const GPUTools::uint32 accessblocks  = 8;
-  static const GPUTools::uint32 regionsize    = 16;
-  static const GPUTools::uint32 wastefactor   = 2;
-  static const bool resetfreedpages           = false;
+    typedef boost::mpl::int_<4096>  pagesize;
+    typedef boost::mpl::int_<8>     accessblocks;
+    typedef boost::mpl::int_<16>    regionsize;
+    typedef boost::mpl::int_<2>     wastefactor;
+    typedef boost::mpl::bool_<false> resetfreedpages;
+  //struct value{
+  //  enum{
+  //    pagesize        = 4096,
+  //    accessblocks    = 8,
+  //    regionsize      = 16,
+  //    wastefactor     = 2,
+  //    resetfreedpages = false
+  //  };
+  //};
 };
 
-//parameters for the AllocationPolicy
+
+//parameters for the Allocation Policy
 template<>
 struct GetProperties<GPUTools::XMallocDistribution<> >{
-  static const GPUTools::uint32 pagesize = 4096;
+  struct value{
+    enum { pagesize = 4096 };
+  };
 };
 
 
@@ -41,22 +54,19 @@ struct GetProperties<GPUTools::XMallocDistribution<> >{
 typedef  ScatterAllocator PolClass;
 
 
+// global Heap Object
 __device__ PolClass polObject;
 
 // global initHeap
-__host__ void* initHeap(size_t heapsize = 8U*1024U*1024U){
-  return PolClass::initHeap(polObject,heapsize);
-};
-
-__host__ void* initHeap(PolClass p,size_t heapsize = 8U*1024U*1024U){
+__host__ void* initHeap(
+    size_t heapsize = 8U*1024U*1024U,
+    PolClass p = polObject
+    ){
   return PolClass::initHeap(p,heapsize);
 };
 
-__host__ void destroyHeap(){
-  PolClass::destroyHeap(polObject);
-};
-
-__host__ void destroyHeap(PolClass p){
+// global destroyHeap
+__host__ void destroyHeap(PolClass p = polObject){
   PolClass::destroyHeap(p);
 };
 

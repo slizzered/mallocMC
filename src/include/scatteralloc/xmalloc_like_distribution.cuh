@@ -9,6 +9,8 @@ namespace GPUTools{
       uint32 myoffset;
       uint32 threadcount;
       uint32 req_size;
+      //const static uint32 pagesize = GetProperties<XMallocDistribution<b> >::pagesize;
+      const static uint32 pagesize = GetProperties<XMallocDistribution<b> >::value::pagesize;
 
 
       public:
@@ -22,8 +24,7 @@ namespace GPUTools{
           __shared__ uint32 warp_sizecounter[32];
           warp_sizecounter[warpid] = 16;
 
-          //bool coalescible = bytes > 0 && bytes < (pagesize / 32);
-          bool coalescible = bytes > 0 && bytes < (GetProperties<XMallocDistribution<b> >::pagesize / 32);
+          bool coalescible = bytes > 0 && bytes < (pagesize / 32);
           uint32 threadcount = __popc(__ballot(coalescible));
 
           if (coalescible && threadcount > 1) 
