@@ -94,9 +94,9 @@ namespace CUDA
 
 
 #define warp_serial                                    \
-  for (uint32 __mask = __ballot(1),                    \
+  for (uint32_richtig_huebsch __mask = __ballot(1),                    \
             __num = __popc(__mask),                    \
-            __lanemask = GPUTools::lanemask_lt(),      \
+            __lanemask = PolicyMalloc::lanemask_lt(),      \
             __local_id = __popc(__lanemask & __mask),  \
             __active = 0;                              \
        __active < __num;                               \
@@ -104,9 +104,9 @@ namespace CUDA
     if (__active == __local_id)
 
 
-namespace GPUTools
+namespace PolicyMalloc 
 {
-  typedef unsigned int uint32;
+  typedef unsigned int uint32_richtig_huebsch;
 
   template<int PSIZE>
   class __PointerEquivalent
@@ -121,73 +121,73 @@ namespace GPUTools
     typedef unsigned long long int type;
   };
 
-  typedef GPUTools::__PointerEquivalent<sizeof(char*)>::type PointerEquivalent;
+  typedef PolicyMalloc::__PointerEquivalent<sizeof(char*)>::type PointerEquivalent;
 
 
-  __device__ inline uint32 laneid()
+  __device__ inline uint32_richtig_huebsch laneid()
   {
-    uint32 mylaneid;
+    uint32_richtig_huebsch mylaneid;
     asm("mov.u32 %0, %laneid;" : "=r" (mylaneid));
     return mylaneid;
   }
 
-  __device__ inline uint32 warpid()
+  __device__ inline uint32_richtig_huebsch warpid()
   {
-    uint32 mywarpid;
+    uint32_richtig_huebsch mywarpid;
     asm("mov.u32 %0, %warpid;" : "=r" (mywarpid));
     return mywarpid;
   }
-  __device__ inline uint32 nwarpid()
+  __device__ inline uint32_richtig_huebsch nwarpid()
   {
-    uint32 mynwarpid;
+    uint32_richtig_huebsch mynwarpid;
     asm("mov.u32 %0, %nwarpid;" : "=r" (mynwarpid));
     return mynwarpid;
   }
 
-  __device__ inline uint32 smid()
+  __device__ inline uint32_richtig_huebsch smid()
   {
-    uint32 mysmid;
+    uint32_richtig_huebsch mysmid;
     asm("mov.u32 %0, %smid;" : "=r" (mysmid));
     return mysmid;
   }
 
-  __device__ inline uint32 nsmid()
+  __device__ inline uint32_richtig_huebsch nsmid()
   {
-    uint32 mynsmid;
+    uint32_richtig_huebsch mynsmid;
     asm("mov.u32 %0, %nsmid;" : "=r" (mynsmid));
     return mynsmid;
   }
-  __device__ inline uint32 lanemask()
+  __device__ inline uint32_richtig_huebsch lanemask()
   {
-    uint32 lanemask;
+    uint32_richtig_huebsch lanemask;
     asm("mov.u32 %0, %lanemask_eq;" : "=r" (lanemask));
     return lanemask;
   }
 
-  __device__ inline uint32 lanemask_le()
+  __device__ inline uint32_richtig_huebsch lanemask_le()
   {
-    uint32 lanemask;
+    uint32_richtig_huebsch lanemask;
     asm("mov.u32 %0, %lanemask_le;" : "=r" (lanemask));
     return lanemask;
   }
 
-  __device__ inline uint32 lanemask_lt()
+  __device__ inline uint32_richtig_huebsch lanemask_lt()
   {
-    uint32 lanemask;
+    uint32_richtig_huebsch lanemask;
     asm("mov.u32 %0, %lanemask_lt;" : "=r" (lanemask));
     return lanemask;
   }
 
-  __device__ inline uint32 lanemask_ge()
+  __device__ inline uint32_richtig_huebsch lanemask_ge()
   {
-    uint32 lanemask;
+    uint32_richtig_huebsch lanemask;
     asm("mov.u32 %0, %lanemask_ge;" : "=r" (lanemask));
     return lanemask;
   }
 
-  __device__ inline uint32 lanemask_gt()
+  __device__ inline uint32_richtig_huebsch lanemask_gt()
   {
-    uint32 lanemask;
+    uint32_richtig_huebsch lanemask;
     asm("mov.u32 %0, %lanemask_gt;" : "=r" (lanemask));
     return lanemask;
   }

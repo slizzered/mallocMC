@@ -1,22 +1,34 @@
-#include "src/include/scatteralloc/utils.h"
-namespace GPUTools{
+#pragma once
 
-  template<bool b = true>
-    class XMallocDistribution
+#include <boost/cstdint.hpp>
+
+#include "../policy_malloc_utils.hpp"
+#include "XMallocSIMD.hpp"
+
+namespace PolicyMalloc{
+namespace DistributionPolicies{
+
+  template<class T_GetProperties>
+    class XMallocSIMD
     {
+      typedef boost::uint32_t uint32;
       bool can_use_coalescing;
       uint32 warpid;
       uint32 myoffset;
       uint32 threadcount;
       uint32 req_size;
-      //const static uint32 pagesize = GetProperties<XMallocDistribution<b> >::pagesize;
-      const static uint32 pagesize = GetProperties<XMallocDistribution<b> >::value::pagesize;
+      static const uint32 pagesize      = T_GetProperties::pagesize::value;
+      static const uint32 dataAlignment = T_GetProperties::dataAlignment::value;
+
+
 
 
       public:
         __device__ uint32 gather(uint32 bytes){
+          bytes = (bytes + dataAlignment - 1) & ~(dataAlignment-1);
+
           can_use_coalescing = false;
-          warpid = GPUTools::warpid();
+          warpid = PolicyMalloc::warpid();
           myoffset = 0;
           threadcount = 0;
         
@@ -65,4 +77,7 @@ namespace GPUTools{
         }
 
     };
-}
+
+} //namespace DistributionPolicies
+
+} //namespace PolicyMalloc
