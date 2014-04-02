@@ -47,9 +47,9 @@ THE SOFTWARE.
 #define ELEMS_PER_SLOT 750
 
 //include the scatter alloc heap
-#include <src/include/scatteralloc/policy_based_heap_impl.cuh>
+#include <src/include/scatteralloc/policy_malloc_config.hpp>
 //#include <src/include/scatteralloc/heap_impl.cuh>
-#include <src/include/scatteralloc/utils.h>
+#include <src/include/scatteralloc/policy_malloc_utils.hpp>
 
 #ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
