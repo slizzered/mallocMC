@@ -10,6 +10,10 @@
 namespace PolicyMalloc{
 namespace CreationPolicies{
     
+  template < typename T_Allocator >
+  __global__ void initKernel(T_Allocator* heap, void* heapmem, size_t memsize){
+    heap->initDeviceFunction(heapmem, memsize);
+  }
 
   template<class T_Dummy>
     class Scatter2
