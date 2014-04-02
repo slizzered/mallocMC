@@ -9,7 +9,8 @@
 #include "GetHeapPolicies.hpp"
 #include "DistributionPolicies.hpp"
 #include "OOMPolicies.hpp"
-#include "CreationPolicies.hpp"
+//#include "CreationPolicies.hpp"
+#include "creationPolicies/Scatter_impl.hpp"
 
 template<>
 struct PolicyMalloc::GetProperties<PolicyMalloc::CreationPolicies::Scatter>{
@@ -33,5 +34,12 @@ typedef PolicyMalloc::PolicyAllocator<
   PolicyMalloc::GetHeapPolicies::SimpleCudaMalloc
   > ScatterAllocator;
 
+//typedef PolicyMalloc::PolicyAllocator< 
+//  PolicyMalloc::CreationPolicies::OldMalloc,
+//  PolicyMalloc::DistributionPolicies::AlignOnly<DistributionTrait>,
+//  PolicyMalloc::OOMPolicies::ReturnNull,
+//  PolicyMalloc::GetHeapPolicies::CudaSetLimits
+//  > OldAllocator;
 
 SET_ACCELERATOR_MEMORY_ALLOCATOR_TYPE(ScatterAllocator)
+//SET_ACCELERATOR_MEMORY_ALLOCATOR_TYPE(OldAllocator)

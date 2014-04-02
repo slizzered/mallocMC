@@ -9,14 +9,6 @@ namespace PolicyMalloc{
   template <typename T>
   struct GetProperties;
 
-  class PlaceHolder{};
-
-  template < typename T_Allocator >
-    __global__ void initKernel(T_Allocator* heap, void* heapmem, size_t memsize){
-      heap->initDeviceFunction(heapmem, memsize);
-    }
-
-
   template < 
      typename T_CreationPolicy, 
      typename T_DistributionPolicy, 
@@ -25,7 +17,6 @@ namespace PolicyMalloc{
        >
   struct PolicyAllocator : 
     public T_CreationPolicy, 
-    public T_DistributionPolicy, 
     public T_OOMPolicy, 
     public T_GetHeapPolicy
   {
