@@ -1,21 +1,31 @@
-#include "src/include/scatteralloc/utils.h"
+#pragma once
+
 #include <stdio.h>
+#include <boost/cstdint.hpp>
+
+#include "../policy_malloc_utils.hpp"
+#include "Scatter.hpp"
 
 
-namespace GPUTools{
+namespace PolicyMalloc{
+namespace CreationPolicies{
+    
 
-
-  //template<uint32 pagesize = 4096, uint32 accessblocks = 8, uint32 regionsize = 16, uint32 wastefactor = 2, bool use_coalescing = true, bool resetfreedpages = false>
-  template<bool use_coalescing = true>
-    class ScatteredHeap
+  template<class T_Dummy>
+    class Scatter2
     {
-        
-        typedef ScatteredHeap<use_coalescing> myType;
-        static const uint32 pagesize      = GetProperties<myType>::pagesize;
-        static const uint32 accessblocks  = GetProperties<myType>::accessblocks;
-        static const uint32 regionsize    = GetProperties<myType>::regionsize;
-        static const uint32 wastefactor   = GetProperties<myType>::wastefactor;
-        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages;
+
+        typedef boost::uint32_t uint32;
+        typedef Scatter2<T_Dummy> myType;
+        typedef typename GetProperties<myType>::pagesize Pagesize;
+        //typedef typename GetProperties<myType>::pagesize::value_type pagesize_t;
+        static const uint32 pagesize  = GetProperties<myType>::pagesize::value;
+        static const uint32 accessblocks  = GetProperties<myType>::accessblocks::value;
+        static const uint32 regionsize    = GetProperties<myType>::regionsize::value;
+        static const uint32 wastefactor   = GetProperties<myType>::wastefactor::value;
+        static const bool resetfreedpages = GetProperties<myType>::resetfreedpages::value;
+
+        static const uint32 dataAlignment = GetProperties<myType>::dataAlignment::value;
 
         //This is something like a public interface. TODO: Remove?
       public:
@@ -25,6 +35,8 @@ namespace GPUTools{
         static const uint32 _wastefactor    = wastefactor;
         static const bool _resetfreedpages  = resetfreedpages;
 
+        static const uint32 _dataAlignment  = dataAlignment;
+
       private:
 
 #if _DEBUG || ANALYSEHEAP
@@ -32,7 +44,7 @@ namespace GPUTools{
 #endif
         static const uint32 minChunkSize0 = pagesize/(32*32);
         static const uint32 minChunkSize1 = 0x10;
-        static const uint32 dataAlignment = 0x10; //needs to be power of two!
+        //static const uint32 dataAlignment = 0x10; //needs to be power of two!
         static const uint32 HierarchyThreshold =  (pagesize - 2*sizeof(uint32))/33;
 
         //this are the parameters for hashing
@@ -83,7 +95,7 @@ namespace GPUTools{
 
             //init the entire data which can hold bitfields 
             uint32 max_bits = min(32*32,pagesize/minChunkSize1);
-            uint32 max_entries = GPUTools::divup<uint32>(max_bits/8,sizeof(uint32))*sizeof(uint32);
+            uint32 max_entries = divup<uint32>(max_bits/8,sizeof(uint32))*sizeof(uint32);
             uint32* write = (uint32*)(data+(pagesize-max_entries));
             while(write < (uint32*)(data + pagesize))
               *write++ = 0;
@@ -631,4 +643,6 @@ namespace GPUTools{
     };
 
 
-}
+} //namespace CreationPolicies
+
+} //namespace PolicyMalloc

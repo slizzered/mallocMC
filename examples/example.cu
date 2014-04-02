@@ -55,7 +55,7 @@
 #include <iostream>
 #include <stdio.h>
 
-typedef GPUTools::uint32 uint;
+typedef GPUTools::uint32_richtig_huebsch uint;
 
 void runexample(int cuda_device);
 

@@ -1,9 +1,13 @@
-#include "src/include/scatteralloc/utils.h"
-#include <assert.h>
+#pragma once
 
-namespace GPUTools{
-  struct GetHeapSimpleMalloc
-  {
+#include "../policy_malloc_utils.hpp"
+#include "SimpleCudaMalloc.hpp"
+
+namespace PolicyMalloc{
+    
+namespace GetHeapPolicies{
+
+  struct SimpleCudaMalloc{
       static void* getMemPool(size_t memsize){
         void* pool;
         SCATTERALLOC_CUDA_CHECKED_CALL(cudaMalloc(&pool, memsize));
@@ -16,4 +20,7 @@ namespace GPUTools{
         //TODO implement me!
       }
   };
-}
+
+} //namespace GetHeapPolicies
+
+} //namespace PolicyMalloc

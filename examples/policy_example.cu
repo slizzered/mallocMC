@@ -28,24 +28,10 @@
 */
 
 #include <cuda.h>
+#include "src/include/scatteralloc/policy_malloc_utils.hpp"
 
-//replace the cuda malloc and free calls
-//#define SCATTERALLOC_OVERWRITE_MALLOC 1
+#include "src/include/scatteralloc/policy_malloc_config.hpp"
 
-//set the template arguments using SCATTERALLOC_HEAPARGS
-// pagesize ... byter per page
-// accessblocks ... number of superblocks
-// regionsize ... number of regions for meta data structur
-// wastefactor ... how much memory can be wasted per alloc (multiplicative factor)
-// use_coalescing ... combine memory requests of within each warp
-// resetfreedpages ... allow pages to be reused with a different size
-#define SCATTERALLOC_HEAPARGS 4096, 8, 16, 2, true, false
-
-//include the scatter alloc heap
-#include <src/include/scatteralloc/policy_based_heap_impl.cuh>
-//#include <src/include/scatteralloc/heap_impl.cuh>
-
-#include <src/include/scatteralloc/utils.h>
 
 
 
@@ -61,7 +47,7 @@
 #include <iostream>
 #include <stdio.h>
 
-typedef GPUTools::uint32 uint;
+typedef PolicyMalloc::uint32_richtig_huebsch uint;
 
 void runexample(int cuda_device);
 
