@@ -56,6 +56,7 @@ INSTALL(
 # Executables
 ###############################################################################
 add_custom_target(examples DEPENDS PolicyAllocExample01 PolicyAllocExample02 VerifyHeap)
+add_custom_target(bug DEPENDS Regression)
 
 cuda_add_executable(PolicyAllocExample
                     EXCLUDE_FROM_ALL
@@ -69,6 +70,9 @@ cuda_add_executable(PolicyAllocExample02
 cuda_add_executable(VerifyHeap
                     EXCLUDE_FROM_ALL
                     tests/verify_heap.cu )
+                  cuda_add_executable(Regression
+                    EXCLUDE_FROM_ALL
+                    examples/minimal_example.cu )
 
 target_link_libraries(PolicyAllocExample ${LIBS})
 target_link_libraries(PolicyAllocExample01 ${LIBS})
