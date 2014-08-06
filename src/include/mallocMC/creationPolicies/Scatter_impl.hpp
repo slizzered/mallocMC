@@ -826,9 +826,31 @@ namespace ScatterKernelDetail{
           uint32 fullsegments = pagesize / segmentsize; //there might be space for more than 32 segments with 32 2nd-level chunks
           uint32 additional_chunks = max(0,(int)pagesize - (int)fullsegments*segmentsize - (int)sizeof(uint32))/chunksize;
           uint32 level2Chunks = fullsegments * 32 + additional_chunks;
+          if(filledChunks > 0 || __popc(_ptes[page].bitmask) != 0){
+          //if(filledChunks > 0){
+            uint32 freeChunks = level2Chunks-filledChunks;
+            uint* onpagemasks = (uint*)(_page[page].data + chunksize*(fullsegments*32 + additional_chunks));
+            printf("Page: %u chunksize: %u segmentsize: %u additionalchunks: %u chunksInPage: %u filledChunks: %u freeChunks %u _ptes.bitmask: %X onPageMasks(%u): %X %X %X %X %X %X %X %X\n",
+                page, _ptes[page].chunksize, segmentsize, additional_chunks, level2Chunks, filledChunks, freeChunks, _ptes[page].bitmask, fullsegments+1,
+                onpagemasks[0],
+                onpagemasks[1],
+                onpagemasks[2],
+                onpagemasks[3],
+                onpagemasks[4],
+                onpagemasks[5],
+                onpagemasks[6],
+                onpagemasks[7]
+                );
+          }
+
           return level2Chunks - filledChunks;
         }else{
           uint32 chunksinpage = min(pagesize / chunksize, 32); //without hierarchy, there can not be more than 32 chunks
+          //if(filledChunks > 0){
+          if(filledChunks > 0 || __popc(_ptes[page].bitmask) != 0){
+            printf("Page: %u chunksize: %u chunksInPage: %u filledChunks: %u _ptes.bitmask: %X\n",
+                page, _ptes[page].chunksize, chunksinpage , filledChunks, _ptes[page].bitmask);
+          }
           return chunksinpage - filledChunks;
         }
       }
