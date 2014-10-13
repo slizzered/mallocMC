@@ -30,6 +30,8 @@
 #include <assert.h>
 #include <vector>
 #include <numeric>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
 
 #include <cuda.h>
 #include <boost/mpl/int.hpp>
@@ -55,11 +57,11 @@
 
 // configurate the CreationPolicy "Scatter"
 struct ScatterConfig{
-    typedef boost::mpl::int_<32*8192>  pagesize;
-    typedef boost::mpl::int_<4>     accessblocks;
+    typedef boost::mpl::int_<4096>  pagesize;
+    typedef boost::mpl::int_<8>     accessblocks;
     typedef boost::mpl::int_<16>    regionsize;
     typedef boost::mpl::int_<2>     wastefactor;
-    typedef boost::mpl::bool_<true> resetfreedpages;
+    typedef boost::mpl::bool_<false> resetfreedpages;
 };
 
 struct ScatterHashParams{
@@ -83,7 +85,8 @@ struct AlignmentConfig{
 // which resembles the behaviour of ScatterAlloc
 typedef mallocMC::Allocator< 
   mallocMC::CreationPolicies::Scatter<ScatterConfig,ScatterHashParams>,
-  mallocMC::DistributionPolicies::XMallocSIMD<DistributionConfig>,
+  //mallocMC::DistributionPolicies::XMallocSIMD<DistributionConfig>,
+  mallocMC::DistributionPolicies::Noop,
   mallocMC::OOMPolicies::ReturnNull,
   mallocMC::ReservePoolPolicies::SimpleCudaMalloc,
   mallocMC::AlignmentPolicies::Shrink<AlignmentConfig>
@@ -101,9 +104,9 @@ MALLOCMC_OVERWRITE_MALLOC()
 ///////////////////////////////////////////////////////////////////////////////
 
 
-void run();
+void run(int chunksPerPage);
 
-int main()
+int main(int argc, char* argv[])
 {
   cudaDeviceProp deviceProp;
   cudaGetDeviceProperties(&deviceProp, 0);
@@ -114,78 +117,87 @@ int main()
     return 1;
   }
 
+  if(argc == 1){
+    std::cerr << "Error: please supply the chunksize" << std::endl;
+    return 1;
+  }
+
   cudaSetDevice(0);
-  run();
+  run(atoi(argv[1]));
   cudaDeviceReset();
 
   return 0;
 }
 
 
-__global__ void fillBuffer(int** pagePointers, int* counter, const int chunkSize, const int maxChunks){
-  id = threadIdx.x + blockIdx.x*blockDim.x;
-
-  while(true){
-    int pos = atomicAdd(counter,1);
-    if(pos>=maxChunks){
-      return;
-    }
-
+__global__ void fillBuffer(int* counter, const int chunkSize, const int maxChunks)
+{
+  while(*counter<maxChunks){
     int* p = (int*) malloc(chunkSize);
-    if(p == NULL){
-      //atomicSub(counter,1);
-      return;
-    }
-    pagePointers[pos] = p;
+    if(p==NULL) return;
+    atomicAdd(counter,1);
   }
+}
+
+__global__ void testSlots(const int chunkSize){
+  printf("availableSlots(%d) = %d\n",chunkSize,mallocMC::getAvailableSlots(chunkSize));
+  return;
 }
 
 
 
-void run()
+void run(int chunkSize)
 {
-  size_t block = 32;
-  size_t grid = 32;
+  size_t block = 128;
+  size_t grid = 1;
+
+  int availableSlots=0;
+  int chunksPerPage = 0;
+  int pageSize = ScatterConfig::pagesize::value;
+  int HierarchyThreshold = (pageSize-2*sizeof(uint32_t))/33;
+  size_t heapSize = 1U*4*1024U*1024U;
+  thrust::device_vector<int> d_counter(1,0);
+
+  if(chunkSize <= HierarchyThreshold){
+    int segmentSize = chunkSize*32 + sizeof(uint32_t);
+    int fullSegments = pageSize / segmentSize;
+    int additionalChunks = max(0,pageSize - fullSegments*segmentSize - (int)sizeof(uint32_t))/chunkSize;
+    additionalChunks = 0;
+    chunksPerPage = 32*fullSegments+additionalChunks;
+  }else{
+    chunksPerPage=min(pageSize / chunkSize, 32);
+  }
+
+  int maxChunks = heapSize/pageSize*chunksPerPage;
 
   //init the heap
-  std::cerr << "init...";
-  size_t heapSize = 1U*1024U*1024U*1024U;
-  int pageSize = ScatterConfig::pagesize::value;
-  mallocMC::initHeap(heapSize); //1GB for device-side malloc. Yields 4096 usable pages
-  // device-side pointers
-  // this should be enough to hold exactly all possible pointers on mallocMC's heap
-  int**  pagePointers;
-  cudaMalloc((void**) &pagePointers, sizeof(int*)*heapSize/pageSize*1024); 
+  mallocMC::initHeap(heapSize);
 
-  thrust::host_vector<int> h_counter(1,0);
-  thrust::device_vector<int> d_counter(h_counter);
-  std::cerr << "done" << std::endl;
-  int chunksPerPage = 32;
-  size_t chunkSize = pageSize/chunksPerPage;
-  int availableSlots=0;
-  maxChunks = heapSize/pageSize*chunkSize;
-
-  std::cout << "calculated Values:" << std::endl;
+  // print stuff before allocating
+  std::cout << "\ncalculated Values:" << std::endl;
   std::cout << heapSize/pageSize << " pages of size " << pageSize << " byte available" << std::endl;
-  std::cout << maxChunks << " slots of size " << chunkSize << " (" << chunksPerPage << " chunks per page)" << std::endl;
+  std::cout << maxChunks << " slots of size " << chunkSize << " (\033[0;32m" << chunksPerPage << "\033[0m chunks per page)" << std::endl;
   
   availableSlots = mallocMC::getAvailableSlots(chunkSize);
-  std::cout << "measured Values before filling:" << std::endl;
-  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "%)"<< std::endl;
+  maxChunks = availableSlots;
+  std::cout << "\nmeasured Values before filling:" << std::endl;
+  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "% free)"<< std::endl;
+  testSlots<<<1,1>>>(chunkSize);
+  cudaDeviceSynchronize();
 
-  fillBuffer<<<grid,block>>>(pagePointers,thrust::raw_pointer_cast(&d_counter[0]), chunkSize, maxChunks);
-  std::count << "counter: " << d_counter[0] << std::endl;
 
+  // allocate
+  fillBuffer<<<grid,block>>>(thrust::raw_pointer_cast(&d_counter[0]), chunkSize, maxChunks);
+
+
+  // print stuff after allocating
   availableSlots = mallocMC::getAvailableSlots(chunkSize);
-  std::cout << "measured Values after filling:" << std::endl;
-  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "%)"<< std::endl;
+  std::cout << "\nmeasured Values after filling:" << std::endl;
+  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "% free)"<< std::endl;
+  testSlots<<<1,1>>>(chunkSize);
+  cudaDeviceSynchronize();
+  std::cout << "Successful allocations: " << d_counter[0] << " (" << (1-d_counter[0]/maxChunks)*100 << "% free)" << std::endl;
 
-//  clearBuffer<<<grid,block>>>(pagePointers,thrust::raw_pointer_cast(&d_counter[0]));
-
-  availableSlots = mallocMC::getAvailableSlots(chunkSize);
-  std::cout << "measured Values after freeing everything:" << std::endl;
-  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "%)"<< std::endl;
-  cudaFree(pagePointers);
   //finalize the heap again
   mallocMC::finalizeHeap();
 }
