@@ -88,7 +88,9 @@ cuda_add_executable(mallocMC_Example02
                     EXCLUDE_FROM_ALL
                     examples/mallocMC_example02.cu )
 cuda_add_executable(oomBug
-                    examples/mallocMC_example03.cu )
+                    tests/oomBug.cu )
+cuda_add_executable(verifyOnPageMasksFormula
+                    tests/verifyOnPageMasksFormula.cu )
 cuda_add_executable(VerifyHeap
                     EXCLUDE_FROM_ALL
                     tests/verify_heap.cu )
@@ -96,4 +98,5 @@ cuda_add_executable(VerifyHeap
 target_link_libraries(mallocMC_Example01 ${LIBS})
 target_link_libraries(mallocMC_Example02 ${LIBS})
 target_link_libraries(oomBug ${LIBS})
+target_link_libraries(verifyOnPageMasksFormula ${LIBS})
 target_link_libraries(VerifyHeap ${LIBS})
