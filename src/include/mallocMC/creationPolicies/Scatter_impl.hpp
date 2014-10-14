@@ -195,7 +195,8 @@ namespace ScatterKernelDetail{
           //init the entire data which can hold bitfields 
           uint32 max_bits = min(32*32,pagesize/minChunkSize1);
           uint32 max_entries = divup<uint32>(max_bits/8,sizeof(uint32))*sizeof(uint32);
-          uint32* write = (uint32*)(data+(pagesize-max_entries));
+          //uint32* write = (uint32*)(data+(pagesize-max_entries));
+          uint32* write = (uint32*)(data);
           while(write < (uint32*)(data + pagesize))
             *write++ = 0;
         }

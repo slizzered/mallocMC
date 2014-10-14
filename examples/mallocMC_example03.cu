@@ -61,7 +61,7 @@ struct ScatterConfig{
     typedef boost::mpl::int_<8>     accessblocks;
     typedef boost::mpl::int_<16>    regionsize;
     typedef boost::mpl::int_<2>     wastefactor;
-    typedef boost::mpl::bool_<false> resetfreedpages;
+    typedef boost::mpl::bool_<true> resetfreedpages;
 };
 
 struct ScatterHashParams{
@@ -97,7 +97,7 @@ MALLOCMC_SET_ALLOCATOR_TYPE(ScatterAllocator)
 
 // replace all standard malloc()-calls on the device by mallocMC calls
 // This will not work with the CreationPolicy "OldMalloc"!
-MALLOCMC_OVERWRITE_MALLOC()
+//MALLOCMC_OVERWRITE_MALLOC()
 
 ///////////////////////////////////////////////////////////////////////////////
 // End of mallocMC configuration
@@ -133,7 +133,7 @@ int main(int argc, char* argv[])
 __global__ void fillBuffer(int* counter, const int chunkSize, const int maxChunks)
 {
   while(*counter<maxChunks){
-    int* p = (int*) malloc(chunkSize);
+    int* p = (int*) mallocMC::malloc(chunkSize);
     if(p==NULL) return;
     atomicAdd(counter,1);
   }
@@ -153,35 +153,42 @@ void run(int chunkSize)
 
   int availableSlots=0;
   int chunksPerPage = 0;
+  int maxChunks = 0;
   int pageSize = ScatterConfig::pagesize::value;
   int HierarchyThreshold = (pageSize-2*sizeof(uint32_t))/33;
   size_t heapSize = 1U*4*1024U*1024U;
   thrust::device_vector<int> d_counter(1,0);
+  uint32_t wastedBytes=0;
 
   if(chunkSize <= HierarchyThreshold){
     int segmentSize = chunkSize*32 + sizeof(uint32_t);
     int fullSegments = pageSize / segmentSize;
     int additionalChunks = max(0,pageSize - fullSegments*segmentSize - (int)sizeof(uint32_t))/chunkSize;
-    additionalChunks = 0;
+    //OOMBUG
+    //additionalChunks = 0;
     chunksPerPage = 32*fullSegments+additionalChunks;
+    std::cout << "\n\033[0;31mUSING A HIERARCHICAL LAYOUT\033[0m with " << fullSegments << " segments and " << additionalChunks << " additional Chunks" << std::endl;
+    wastedBytes = pageSize - (32*fullSegments+additionalChunks)*chunkSize - (fullSegments+additionalChunks)*sizeof(uint32_t);
   }else{
     chunksPerPage=min(pageSize / chunkSize, 32);
+    wastedBytes = pageSize - (chunkSize*chunksPerPage);
   }
+  uint32_t numregions = ((unsigned long long)heapSize)/( ((unsigned long long)ScatterConfig::regionsize::value)*(sizeof(uint32_t)*3+pageSize)+sizeof(uint32_t));
+  uint32_t numpages = numregions*ScatterConfig::regionsize::value;
 
-  int maxChunks = heapSize/pageSize*chunksPerPage;
 
   //init the heap
   mallocMC::initHeap(heapSize);
 
   // print stuff before allocating
-  std::cout << "\ncalculated Values:" << std::endl;
-  std::cout << heapSize/pageSize << " pages of size " << pageSize << " byte available" << std::endl;
-  std::cout << maxChunks << " slots of size " << chunkSize << " (\033[0;32m" << chunksPerPage << "\033[0m chunks per page)" << std::endl;
-  
   availableSlots = mallocMC::getAvailableSlots(chunkSize);
   maxChunks = availableSlots;
+  std::cout << "calculated Values:" << std::endl;
+  std::cout << "at most: " << numpages << " pages of size " << pageSize << " byte available" << std::endl;
+  std::cout << "(\033[0;32m" << chunksPerPage << "\033[0m chunks per page), " << wastedBytes << " byte wasted"<< std::endl;
+  
   std::cout << "\nmeasured Values before filling:" << std::endl;
-  std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "% free)"<< std::endl;
+  std::cout << "availableSlots(" << chunkSize << ") = \033[0;33m" << availableSlots << "\033[0m (" << float(availableSlots)/maxChunks*100 << "% free)"<< std::endl;
   testSlots<<<1,1>>>(chunkSize);
   cudaDeviceSynchronize();
 
@@ -196,7 +203,7 @@ void run(int chunkSize)
   std::cout << "availableSlots(" << chunkSize << ") = " << availableSlots << " (" << float(availableSlots)/maxChunks*100 << "% free)"<< std::endl;
   testSlots<<<1,1>>>(chunkSize);
   cudaDeviceSynchronize();
-  std::cout << "Successful allocations: " << d_counter[0] << " (" << (1-d_counter[0]/maxChunks)*100 << "% free)" << std::endl;
+  std::cout << "Successful allocations: \033[0;33m" << d_counter[0] << "\033[0m (" << (float(d_counter[0])/maxChunks)*100 << "% full)" << std::endl;
 
   //finalize the heap again
   mallocMC::finalizeHeap();
