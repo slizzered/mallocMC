@@ -1,0 +1,133 @@
+/**
+ * Copyright 2013 Erik Zenker, Carlchristian Eckert, Marius Melzer
+ *
+ * This file is part of HASENonGPU
+ *
+ * HASENonGPU is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * HASENonGPU is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with HASENonGPU.
+ * If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
+#include <unistd.h>
+#include <cmath>
+#include <iomanip>
+#include <sys/time.h>
+
+
+/**
+ * @brief prints a line of ascii-art in the style of a sine-wave
+ *
+ * @param stream the stream to which to write the output
+ * @param tic continuously increasing value related to the real outside time
+ * @param progress the progress of the whole process (i.e. 90, if the process ranges
+ *        from 0-100 and the progress is at 90%
+ *        progress must be <= length! (normalize progress in order to acheive this)
+ * @param length the length of the finished wave.
+ *        length must be at least as long as the progress!
+ */
+void printWave(std::ostream &stream, unsigned tic, int progress, int length){
+  for(int i=0;i<progress ;++i){
+    switch((tic+i) % 12){
+      case 0: stream << "ø"; break;
+      case 1: stream << "¤"; break;
+      case 2: stream << "º"; break;
+      case 3: stream << "°"; break;
+      case 4: stream << "`"; break;
+      case 5: stream << "°"; break;
+      case 6: stream << "º"; break;
+      case 7: stream << "¤"; break;
+      case 8: stream << "ø"; break;
+      case 9: stream << ","; break;
+      case 10: stream << "¸"; break;
+      case 11: stream << ","; break;
+    }
+  }
+  for(int i=0; i < length-progress ; ++i){
+    stream << " ";
+  }
+}
+
+//void simpleProgressBar(unsigned part, unsigned full){
+//  unsigned length = 80;
+//
+//  float percentage = (float(part)+1) / float(full);
+//
+//  dout(V_PROGRESS | V_NOLABEL) << "\r";
+//  dout(V_PROGRESS) << "Progress: [";
+//  for(int i=0 ; i < (percentage*length) ; i++){
+//    dout(V_PROGRESS | V_NOLABEL) << "#";
+//  }
+//  for(int i=0;i< length-(percentage*length) ;i++){
+//    dout(V_PROGRESS | V_NOLABEL) << " ";
+//  }
+//  dout(V_PROGRESS | V_NOLABEL) << "] " << int(percentage*100) << "% (" << part+1 << "/" << full << std::flush;
+//}
+
+
+/**
+ * @brief give the difference of two time values in milliseconds
+ *
+ * @param start the starting time of the process to time
+ * @param end the time when the process did finish
+ * @return the difference (end-start) in milliseconds
+ *
+ */
+unsigned long long timevalDiffInMillis(timeval start, timeval end){
+  unsigned long long t = 1000 * (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1000;
+  return t;
+}
+
+
+void fancyProgressBar(const unsigned nTotal){
+
+  const int length = 50;
+
+  //use maxNTotal to find the global maximum between multiple calling threads
+  static unsigned maxNTotal = 0;
+  static timeval startTime;
+  static unsigned part = 0;
+  
+  //find the starting time of the whole progress
+  if(part==0){ gettimeofday(&startTime,NULL); }
+  maxNTotal = max(maxNTotal, nTotal);
+  static const unsigned fillwidthPart = unsigned(1+log10(maxNTotal));
+  static unsigned tic  = 0;
+  timeval now;
+  gettimeofday(&now,NULL);
+  ++part;
+
+  //limit the update intervall (not faster than every 35ms, since that would be madness)
+  unsigned long long millisSpent = timevalDiffInMillis(startTime,now); 
+  if(millisSpent > 35*tic || part==maxNTotal){
+    ++tic;
+
+    const float percentage = float(part) / float(maxNTotal);
+    const float timeSpent = float(millisSpent) / 1000;
+    const float timeTotal = timeSpent/percentage;
+    const int timeRemaining = timeTotal-timeSpent;
+
+    std::cout << "\r";
+    std::cout << "Progress: [";
+    printWave(std::cout, tic, int(percentage*length), length);
+    std::cout << "] ";
+
+    std::cout << std::setfill(' ') << std::setw(3) << int(percentage*100) << "%";
+    std::cout << " (" << std::setfill(' ') << std::setw(fillwidthPart) << part << "/" << maxNTotal << ")";
+    std::cout << " after " << int(timeSpent) << "s";
+    std::cout << " (" << int(timeTotal) << "s total, " << timeRemaining << "s remaining)";
+    std::cout << std::flush;
+  }
+}
+
+
