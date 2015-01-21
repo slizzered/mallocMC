@@ -263,6 +263,27 @@ namespace ScatterKernelDetail{
         }
       }
 
+
+      /**
+       * calcAdditionalChunks determines the number of chunks that are contained in the last segment of a hierarchical page
+       *
+       * The additional checks are necessary to ensure correct results for very large pages and small chunksizes
+       *
+       * @param fullsegments the number of segments that can be completely filled in a page
+       * @param segmentsize the number of bytes that are contained in a completely filled segment (32 chunks)
+       * @param chunksize the chosen allocation size within the page
+       * @return the number of additional chunks that will not fit in one of the fullsegments
+       */
+      __device__ inline uint32 calcAdditionalChunks(uint32 fullsegments, uint32 segmentsize, uint32 chunksize){
+        if(fullsegments < 32){
+          uint32 additional_chunks = max(0,(int)pagesize - (int)fullsegments*segmentsize - (int)sizeof(uint32))/chunksize;
+          additional_chunks = max(0,32-(int)fullsegments-(int)additional_chunks);
+          return additional_chunks;
+        }else
+          return 0;
+      }
+
+
       /**
        * addChunkHierarchy finds a free chunk on a page which uses bit fields on the page
        * @param chunksize the chunksize of the page
@@ -329,8 +350,8 @@ namespace ScatterKernelDetail{
             uint32 segmentsize = chunksize*32 + sizeof(uint32);
             uint32 fullsegments = 0;
             uint32 additional_chunks = 0;
-            fullsegments = pagesize / segmentsize;
-            additional_chunks = max(0,(int)pagesize - (int)fullsegments*segmentsize - (int)sizeof(uint32))/chunksize;
+            fullsegments = min(32,pagesize / segmentsize);
+            uint32 additional_chunks = calcAdditionalChunks(fullsegments, segmentsize, chunksize);
             if(filllevel < fullsegments * 32 + additional_chunks)
               chunk_ptr = addChunkHierarchy(chunksize, fullsegments, additional_chunks, page);
           }
@@ -437,8 +458,8 @@ namespace ScatterKernelDetail{
         {
           //one more level in hierarchy
           uint32 segmentsize = chunksize*32 + sizeof(uint32);
-          uint32 fullsegments = pagesize / segmentsize;
-          uint32 additional_chunks = max(0,(int)(pagesize - fullsegments*segmentsize) - (int)sizeof(uint32))/chunksize;
+          uint32 fullsegments = min(32,pagesize / segmentsize);
+          uint32 additional_chunks = calcAdditionalChunks(fullsegments,segmentsize,chunksize);
           uint32 segment = inpage_offset / (chunksize*32);
           uint32 withinsegment = (inpage_offset - segment*(chunksize*32))/chunksize;
           //mark it as free
@@ -819,8 +840,8 @@ namespace ScatterKernelDetail{
         if(chunksize <= HierarchyThreshold)
         {
           uint32 segmentsize = chunksize*32 + sizeof(uint32); //each segment can hold 32 2nd-level chunks
-          uint32 fullsegments = pagesize / segmentsize; //there might be space for more than 32 segments with 32 2nd-level chunks
-          uint32 additional_chunks = max(0,(int)pagesize - (int)fullsegments*segmentsize - (int)sizeof(uint32))/chunksize;
+          uint32 fullsegments = min(32,pagesize / segmentsize); //there might be space for more than 32 segments with 32 2nd-level chunks
+          uint32 additional_chunks = calcAdditionalChunks(fullsegments, segmentsize, chunksize);
           uint32 level2Chunks = fullsegments * 32 + additional_chunks;
           return level2Chunks - filledChunks;
         }else{
