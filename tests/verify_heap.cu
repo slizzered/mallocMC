@@ -38,7 +38,7 @@
 
 // each pointer in the datastructure will point to this many
 // elements of type allocElem_t
-#define ELEMS_PER_SLOT 750
+#define ELEMS_PER_SLOT 1
 
 #include <cuda.h>
 #include <iostream>
@@ -50,9 +50,7 @@
 #include "src/include/mallocMC/mallocMC_utils.hpp"
 #include "verify_heap_config.hpp"
 
-//use ScatterAllocator to replace malloc/free
-MALLOCMC_SET_ALLOCATOR_TYPE(ScatterAllocator)
-MALLOCMC_OVERWRITE_MALLOC()
+MALLOCMC_SET_ALLOCATOR_TYPE(VerifyAllocator)
 
 // global variable for verbosity, might change due to user input '--verbose'
 bool verbose = false;

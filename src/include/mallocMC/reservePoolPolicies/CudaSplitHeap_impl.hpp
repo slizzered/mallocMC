@@ -1,8 +1,7 @@
 /*
   mallocMC: Memory Allocator for Many Core Architectures.
-  https://www.hzdr.de/crp
 
-  Copyright 2014 Institute of Radiation Physics,
+  Copyright 2015 Institute of Radiation Physics,
                  Helmholtz-Zentrum Dresden - Rossendorf
 
   Author(s):  Carlchristian Eckert - c.eckert ( at ) hzdr.de
@@ -28,11 +27,28 @@
 
 #pragma once
 
-#include "reservePoolPolicies/SimpleCudaMalloc.hpp"
-#include "reservePoolPolicies/SimpleCudaMalloc_impl.hpp"
+#include <string>
 
-#include "reservePoolPolicies/CudaSetLimits.hpp"
-#include "reservePoolPolicies/CudaSetLimits_impl.hpp"
+#include "CudaSplitHeap.hpp"
 
-#include "reservePoolPolicies/NoOp.hpp"
-#include "reservePoolPolicies/NoOp_impl.hpp"
+namespace mallocMC{
+namespace ReservePoolPolicies{
+
+  struct CudaSplitHeap{
+    static void* setMemPool(size_t memsize){
+      cudaDeviceSetLimit(cudaLimitMallocHeapSize, memsize);
+      return NULL;
+    }
+
+    static void resetMemPool(void *p=NULL){
+      cudaDeviceSetLimit(cudaLimitMallocHeapSize, 8192U);
+    }
+
+    static std::string classname(){
+      return "CudaSplitHeap";
+    }
+
+  };
+
+} //namespace ReservePoolPolicies
+} //namespace mallocMC

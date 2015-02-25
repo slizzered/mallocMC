@@ -1,9 +1,9 @@
 /*
   mallocMC: Memory Allocator for Many Core Architectures.
-  https://www.hzdr.de/crp
+  http://www.icg.tugraz.at/project/mvp
 
-  Copyright 2014 Institute of Radiation Physics,
-                 Helmholtz-Zentrum Dresden - Rossendorf
+  Copyright (C) 2015 Institute of Radiation Physics,
+                     Helmholtz-Zentrum Dresden - Rossendorf
 
   Author(s):  Carlchristian Eckert - c.eckert ( at ) hzdr.de
 
@@ -28,11 +28,30 @@
 
 #pragma once
 
-#include "reservePoolPolicies/SimpleCudaMalloc.hpp"
-#include "reservePoolPolicies/SimpleCudaMalloc_impl.hpp"
+#include <boost/mpl/int.hpp>
 
-#include "reservePoolPolicies/CudaSetLimits.hpp"
-#include "reservePoolPolicies/CudaSetLimits_impl.hpp"
+namespace mallocMC{
+namespace CreationPolicies{
+namespace HallocConf{
+  struct DefaultHallocConfig{
+    typedef boost::mpl::int<75>   halloc_fraction_nom;
+    typedef boost::mpl::int<100>  halloc_fraction_denom;
+    typedef boost::mpl::int<835>  busy_fraction_nom;
+    typedef boost::mpl::int<1000> busy_fraction_denom;
+    typedef boost::mpl::int<6>    roomy_fraction_nom;
+    typedef boost::mpl::int<10>   roomy_fraction_denom;
+    typedef boost::mpl::int<12>   sparse_fraction_nom;
+    typedef boost::mpl::int<1000> sparse_fraction_denom;
+    typedef boost::mpl::int<22>   sb_sz_sh;
+  };
 
-#include "reservePoolPolicies/NoOp.hpp"
-#include "reservePoolPolicies/NoOp_impl.hpp"
+}
+
+  /**
+   * @brief 
+   */
+  template<class T_Config = HallocConf::DefaultHallocConfig>
+  class Halloc;
+
+}// namespace CreationPolicies
+}// namespace mallocMC

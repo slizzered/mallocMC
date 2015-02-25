@@ -33,3 +33,6 @@
 
 #include "creationPolicies/OldMalloc.hpp"
 #include "creationPolicies/OldMalloc_impl.hpp"
+
+#include "creationPolicies/Halloc.hpp"
+#include "creationPolicies/Halloc_impl.hpp"
