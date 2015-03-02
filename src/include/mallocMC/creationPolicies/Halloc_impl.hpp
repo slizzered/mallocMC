@@ -47,7 +47,7 @@ namespace CreationPolicies{
 
     __device__ void* create(uint32 bytes)
     {
-      return ::hamalloc(static_cast<size_t>(bytes));
+      return hamalloc(static_cast<size_t>(bytes));
     }
 
     __device__ void destroy(void* mem)
@@ -98,14 +98,12 @@ namespace CreationPolicies{
 #define MALLOCMC_CP_HALLOC_SBSZSH static_cast<int>(Properties::sb_sz_sh::value)
 #endif
 
-      halloc_opts_t default_opts(
-          memsize,
-          MALLOCMC_CP_HALLOC_HALLOCFRACTION,
-          MALLOCMC_CP_HALLOC_BUSYFRACTION,
-          MALLOCMC_CP_HALLOC_ROOMYFRACTION,
-          MALLOCMC_CP_HALLOC_SPARSEFRACTION,
-          MALLOCMC_CP_HALLOC_SBSZSH
-      );
+      halloc_opts_t default_opts(memsize);
+      default_opts.halloc_fraction = MALLOCMC_CP_HALLOC_HALLOCFRACTION;
+      default_opts.busy_fraction   = MALLOCMC_CP_HALLOC_BUSYFRACTION;
+      default_opts.roomy_fraction  = MALLOCMC_CP_HALLOC_ROOMYFRACTION;
+      default_opts.sparse_fraction = MALLOCMC_CP_HALLOC_SPARSEFRACTION;
+      default_opts.sb_sz_sh        = MALLOCMC_CP_HALLOC_SBSZSH;
       ::ha_init(default_opts);
       return NULL;
     }

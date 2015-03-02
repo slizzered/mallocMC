@@ -1,0 +1,45 @@
+project(halloc)
+cmake_minimum_required(VERSION 2.8.5)
+
+
+###############################################################################
+# CUDA
+###############################################################################
+find_package(CUDA 5.0 REQUIRED)
+
+foreach(arch 20 30 35)
+	list(APPEND CUDA_NVCC_FLAGS "-gencode arch=compute_${arch},code=sm_${arch}")
+endforeach(arch)
+
+list(APPEND CUDA_NVCC_FLAGS "-O3")
+list(APPEND CUDA_NVCC_FLAGS "-lineinfo")
+list(APPEND CUDA_NVCC_FLAGS "-rdc=true")
+list(APPEND CUDA_NVCC_FLAGS "-Xptxas")
+list(APPEND CUDA_NVCC_FLAGS "-dlcm=cg")
+list(APPEND CUDA_NVCC_FLAGS "-Xptxas")
+list(APPEND CUDA_NVCC_FLAGS "-dscm=wb")
+list(APPEND CUDA_NVCC_FLAGS "-Xptxas")
+list(APPEND CUDA_NVCC_FLAGS "-maxrregcount=64")
+
+
+###############################################################################
+# Executables
+###############################################################################
+file(GLOB SRCFILES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cu")
+cuda_add_library(halloc ${SRCFILES} STATIC)
+
+
+###############################################################################
+# Installation
+###############################################################################
+set(HALLOC_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+INSTALL(
+	FILES
+		"${CMAKE_CURRENT_SOURCE_DIR}/src/halloc.h"
+	DESTINATION "${HALLOC_INSTALL_DIR}/include/."
+  )
+INSTALL(
+	FILES
+		"${CMAKE_CURRENT_BINARY_DIR}/libhalloc.a"
+	DESTINATION "${HALLOC_INSTALL_DIR}/lib/."
+  )

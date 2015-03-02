@@ -34,15 +34,15 @@ namespace mallocMC{
 namespace CreationPolicies{
 namespace HallocConf{
   struct DefaultHallocConfig{
-    typedef boost::mpl::int<75>   halloc_fraction_nom;
-    typedef boost::mpl::int<100>  halloc_fraction_denom;
-    typedef boost::mpl::int<835>  busy_fraction_nom;
-    typedef boost::mpl::int<1000> busy_fraction_denom;
-    typedef boost::mpl::int<6>    roomy_fraction_nom;
-    typedef boost::mpl::int<10>   roomy_fraction_denom;
-    typedef boost::mpl::int<12>   sparse_fraction_nom;
-    typedef boost::mpl::int<1000> sparse_fraction_denom;
-    typedef boost::mpl::int<22>   sb_sz_sh;
+    typedef boost::mpl::int_<75>   halloc_fraction_nom;
+    typedef boost::mpl::int_<100>  halloc_fraction_denom;
+    typedef boost::mpl::int_<835>  busy_fraction_nom;
+    typedef boost::mpl::int_<1000> busy_fraction_denom;
+    typedef boost::mpl::int_<6>    roomy_fraction_nom;
+    typedef boost::mpl::int_<10>   roomy_fraction_denom;
+    typedef boost::mpl::int_<12>   sparse_fraction_nom;
+    typedef boost::mpl::int_<1000> sparse_fraction_denom;
+    typedef boost::mpl::int_<22>   sb_sz_sh;
   };
 
 }

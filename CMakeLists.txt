@@ -1,5 +1,5 @@
 project(mallocMC)
-cmake_minimum_required(VERSION 2.8.5)
+cmake_minimum_required(VERSION 3.0.1)
 
 # helper for libs and packages
 set(CMAKE_PREFIX_PATH "/usr/lib/x86_64-linux-gnu/"
@@ -10,17 +10,18 @@ set(CMAKE_PREFIX_PATH "/usr/lib/x86_64-linux-gnu/"
 # CUDA
 ###############################################################################
 find_package(CUDA REQUIRED)
-set(CUDA_NVCC_FLAGS "-arch=sm_20;-use_fast_math;")
+set(CUDA_NVCC_FLAGS "-use_fast_math;")
+set(CUDA_ARCH sm_35 CACHE STRING "Set GPU architecture")
 set(CUDA_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CUDA_INCLUDE_DIRS})
 cuda_include_directories(${CUDA_INCLUDE_DIRS})
 
 OPTION(CUDA_OUTPUT_INTERMEDIATE_CODE "Output ptx code" OFF)
 if(CUDA_OUTPUT_INTERMEDIATE_CODE)
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};-Xptxas;-v;--keep")
+set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};-Xptxas;-v;--keep;-dc")
 endif(CUDA_OUTPUT_INTERMEDIATE_CODE)
 
-SET(CUDA_OPTIMIZATION_TYPE "unset" CACHE STRING "CUDA Optimization")
+SET(CUDA_OPTIMIZATION_TYPE "-O3" CACHE STRING "CUDA Optimization")
 set_property(CACHE CUDA_OPTIMIZATION_TYPE PROPERTY STRINGS "unset;-G0;-O0;-O1;-O2;-O3")
 if(NOT ${CUDA_OPTIMIZATION_TYPE} STREQUAL  "unset")
   set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS};${CUDA_OPTIMIZATION_TYPE}")
@@ -41,11 +42,25 @@ endif(Boost_VERSION EQUAL 105500)
 
 
 ################################################################################
-# Halloc library 
+# Halloc
 ################################################################################
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS}" -lhalloc)
-set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS}" -L ${CMAKE_CURRENT_SOURCE_DIR}/halloc/lib)
-set(LIBS ${LIBS} ${CMAKE_CURRENT_SOURCE_DIR}/halloc/lib/libhalloc.a)
+set(HALLOC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/halloc")
+set(HALLOC_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/halloc")
+
+set(CUDA_SEPARABLE_COMPILATION ON)
+list(APPEND CUDA_NVCC_FLAGS "-rdc=true")
+
+cuda_include_directories(${HALLOC_INSTALL_DIR}/include)
+list(APPEND CUDA_NVCC_FLAGS "-lhalloc")
+list(APPEND CUDA_NVCC_FLAGS "-L${HALLOC_INSTALL_DIR}/lib")
+list(APPEND LIBS "${HALLOC_INSTALL_DIR}/lib/libhalloc.a")
+
+add_custom_target(halloc
+  COMMAND mkdir -p "${HALLOC_INSTALL_DIR}/include"
+  COMMAND mkdir -p "${HALLOC_INSTALL_DIR}/lib"
+  COMMAND make --directory=${HALLOC_DIR}
+  COMMAND make install --directory=${HALLOC_DIR} PREFIX=${HALLOC_INSTALL_DIR}
+  )
 
 
 ################################################################################
@@ -89,8 +104,6 @@ INSTALL(
 ###############################################################################
 add_custom_target(examples DEPENDS mallocMC_Example01 mallocMC_Example02 mallocMC_Example03 VerifyHeap)
 
-set(CUDA_SEPARABLE_COMPILATION ON)
-
 cuda_add_executable(mallocMC_Example01
                     EXCLUDE_FROM_ALL
                     examples/mallocMC_example01.cu )
@@ -100,11 +113,14 @@ cuda_add_executable(mallocMC_Example02
 cuda_add_executable(mallocMC_Example03
                     EXCLUDE_FROM_ALL
                     examples/mallocMC_example03.cu )
+add_dependencies(mallocMC_Example03 halloc)
 cuda_add_executable(VerifyHeap
                     EXCLUDE_FROM_ALL
                     tests/verify_heap.cu )
+add_dependencies(VerifyHeap halloc)
 
-target_link_libraries(mallocMC_Example01 ${LIBS})
-target_link_libraries(mallocMC_Example02 ${LIBS})
-target_link_libraries(mallocMC_Example03 ${LIBS})
+
+target_link_libraries(mallocMC_Example01 ${LIBS} )
+target_link_libraries(mallocMC_Example02 ${LIBS} )
+target_link_libraries(mallocMC_Example03 ${LIBS} )
 target_link_libraries(VerifyHeap ${LIBS})

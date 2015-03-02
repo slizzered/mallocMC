@@ -140,8 +140,8 @@ namespace mallocMC{
         * sufficient. However, due to the template nature of policy based
         * design, functions are only compiled if they are actually used.
         */
-        if(CreationPolicy::providesAvailableSlots::value)
-          CreationPolicy::getAvailableSlotsHost(1024,*this); //actual slot size does not matter
+        //if(CreationPolicy::providesAvailableSlots::value)
+        //  CreationPolicy::getAvailableSlotsHost(1024,*this); //actual slot size does not matter
 
         return h;
       }

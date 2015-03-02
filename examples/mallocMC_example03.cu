@@ -53,13 +53,17 @@
 // Configuration for mallocMC
 ///////////////////////////////////////////////////////////////////////////////
 
+struct HallocConfig : mallocMC::CreationPolicies::Halloc<>::Properties{
+};
+
+
 typedef mallocMC::Allocator< 
-  mallocMC::CreationPolicies::Halloc<>,
+  mallocMC::CreationPolicies::Halloc<HallocConfig>,
   mallocMC::DistributionPolicies::Noop,
   mallocMC::OOMPolicies::ReturnNull,
   mallocMC::ReservePoolPolicies::NoOp,
-  mallocMC::AlignmentPolicies::Noop,
-  > Halloc_Allocator;
+  mallocMC::AlignmentPolicies::Noop
+  >Halloc_Allocator;
 
 // use "Halloc" as mallocMC
 MALLOCMC_SET_ALLOCATOR_TYPE(Halloc_Allocator)
@@ -107,9 +111,9 @@ __global__ void fillArrays(int length, int* d){
 
   // using the MALLOCMC_OVERWRITE_MALLOC() macro
   // allows also the use of "new" 
-  a[id] = mallocMC::malloc(length*sizeof(int));
-  b[id] = mallocMC::malloc(length*sizeof(int));
-  c[id] = mallocMC::malloc(length*sizeof(int));
+  a[id] = (int*) mallocMC::malloc(length*sizeof(int));
+  b[id] = (int*) mallocMC::malloc(length*sizeof(int));
+  c[id] = (int*) mallocMC::malloc(length*sizeof(int));
   
   for(int i=0 ; i<length; ++i){
     a[id][i] = id*length+i; 
