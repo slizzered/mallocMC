@@ -144,8 +144,8 @@ __global__ void freeArrays(){
 void run()
 {
   size_t block = 32;
-  size_t grid = 32;
-  int length = 100;
+  size_t grid = 16;
+  int length = 1;
   assert(length<= block*grid); //necessary for used algorithm
 
   //init the heap
