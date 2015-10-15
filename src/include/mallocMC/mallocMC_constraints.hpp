@@ -30,7 +30,11 @@
 
 #include "creationPolicies/Scatter.hpp"
 #include "distributionPolicies/XMallocSIMD.hpp"
+#include "creationPolicies/OldMalloc.hpp"
+#include "reservePoolPolicies/CudaSetLimits.hpp"
 #include <boost/mpl/assert.hpp>
+#include <boost/mpl/equal.hpp>
+#include <boost/mpl/vector.hpp>
 
 namespace mallocMC{
 
@@ -41,6 +45,9 @@ namespace mallocMC{
 
   template<typename Policy1, typename Policy2>
   class PolicyCheck2{};
+
+  template<typename Policy1, typename Policy2>
+  class PolicyCheck2n{};
 
   template<typename Policy1, typename Policy2, typename Policy3>
   class PolicyCheck3{};
@@ -63,10 +70,11 @@ namespace mallocMC{
      typename T_GetHeapPolicy,
      typename T_AlignmentPolicy
        >
+  class PolicyConstraints
+      : PolicyCheck2<T_CreationPolicy, T_DistributionPolicy>
+      , PolicyCheck2n<T_GetHeapPolicy, T_CreationPolicy>
 
-  class PolicyConstraints:PolicyCheck2<T_CreationPolicy, T_DistributionPolicy>{
-
-  };
+  {};
 
 
   /** Scatter and XMallocSIMD need the same pagesize!
@@ -83,5 +91,23 @@ namespace mallocMC{
     BOOST_MPL_ASSERT_MSG(x::pagesize::value == z::pagesize::value,
         Pagesize_must_be_the_same_when_combining_Scatter_and_XMallocSIMD, () );
   };
+
+
+  /** When using CudaSetLimits, the other policies must default to the CUDA allocator
+   *
+   *
+   */
+  template<typename CP_T>
+  class PolicyCheck2n<
+    ReservePoolPolicies::CudaSetLimits,
+    CP_T
+  >{
+  typedef boost::mpl::vector<CreationPolicies::OldMalloc> a;
+  typedef boost::mpl::vector<CP_T> b;
+
+   BOOST_MPL_ASSERT_MSG((boost::mpl::equal<a,b>::value),
+       CudaSetLimits_may_only_be_used_with_default_CUDA_allocator, () );
+  };
+
 
 }//namespace mallocMC
