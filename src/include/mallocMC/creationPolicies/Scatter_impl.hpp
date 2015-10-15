@@ -816,6 +816,9 @@ namespace ScatterKernelDetail{
 
       template < typename T_Obj>
       static void* initHeap(const T_Obj& obj, void* pool, size_t memsize){
+        if(pool == NULL){
+          throw CUDA::error("The memory pool may not be NULL!");
+        }
         T_Obj* heap;
         MALLOCMC_CUDA_CHECKED_CALL(cudaGetSymbolAddress((void**)&heap,obj));
         ScatterKernelDetail::initKernel<<<1,256>>>(heap, pool, memsize);
