@@ -61,9 +61,6 @@ Just an incomplete link collection for now:
 - [Paper](http://www.icg.tugraz.at/Members/steinber/scatteralloc-1) by
   Markus Steinberger, Michael Kenzel, Bernhard Kainz and Dieter Schmalstieg
 
-- 2012, May 5th: [Presentation](http://innovativeparallel.org/Presentations/inPar_kainz.pdf)
-        at *Innovative Parallel Computing 2012* by *Bernhard Kainz*
-
 - Junior Thesis [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.34461.svg)](http://dx.doi.org/10.5281/zenodo.34461) by
   Carlchristian Eckert (2014)
 
